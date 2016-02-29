@@ -3,4 +3,5 @@ res/.DS_Store
 xcuserdata/
 
 testoutmap.png
+outmesh.obj
 dbgtiles/tile_*.png

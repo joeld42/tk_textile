@@ -252,6 +252,58 @@ Mesh *Mesh::load(const char *filename)
     return result;
 }
 
+void Mesh::save( const char *filename, int32_t outMapSize )
+{
+    printf("Writing output mesh '%s'\n", filename );
+    
+    FILE *fp = fopen(filename, "wt");
+    
+    fprintf( fp, "# Saved from tk_textile\n");
+    
+    // verts
+    for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
+        fprintf( fp, "v %f %f %f\n", tri->A_.pos[0], tri->A_.pos[1],tri->A_.pos[2]);
+        fprintf( fp, "v %f %f %f\n", tri->B_.pos[0], tri->B_.pos[1],tri->B_.pos[2]);
+        fprintf( fp, "v %f %f %f\n\n", tri->C_.pos[0], tri->C_.pos[1],tri->C_.pos[2]);
+    }
+
+    // normals
+    for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
+        fprintf( fp, "vn %f %f %f\n", tri->A_.nrm[0], tri->A_.nrm[1],tri->A_.nrm[2]);
+        fprintf( fp, "vn %f %f %f\n", tri->B_.nrm[0], tri->B_.nrm[1],tri->B_.nrm[2]);
+        fprintf( fp, "vn %f %f %f\n\n", tri->C_.nrm[0], tri->C_.nrm[1],tri->C_.nrm[2]);
+    }
+
+    // tex coords from tiles
+    for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
+        Tile *tile = tri->tile_;
+        float stA[2], stB[2], stC[2];
+
+        stA[0] = (float)(tile->packX_ + tile->tileA_[0]) / (float)outMapSize;
+        stA[1] = 1.0 - (float)(tile->packY_ + tile->tileA_[1]) / (float)outMapSize;
+        fprintf( fp, "vt %f %f\n", stA[0], stA[1] );
+        
+        stB[0] = (float)(tile->packX_ + tile->tileB_[0]) / (float)outMapSize;
+        stB[1] = 1.0 - (float)(tile->packY_ + tile->tileB_[1]) / (float)outMapSize;
+        fprintf( fp, "vt %f %f\n", stB[0], stB[1] );
+
+        stC[0] = (float)(tile->packX_ + tile->tileC_[0]) / (float)outMapSize;
+        stC[1] = 1.0 - (float)(tile->packY_ + tile->tileC_[1]) / (float)outMapSize;
+        fprintf( fp, "vt %f %f\n\n", stC[0], stC[1] );
+    }
+
+    // And finally triangles
+    size_t ndx = 1;
+    for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
+        fprintf( fp, "f %zu/%zu/%zu %zu/%zu/%zu %zu/%zu/%zu\n",
+                ndx, ndx, ndx,
+                ndx+1, ndx+1, ndx+1,
+                ndx+2, ndx+2, ndx+2 );
+        ndx += 3;
+    }
+    fclose( fp );
+}
+
 Mesh::~Mesh()
 {
     if (filename_) {
@@ -428,12 +480,9 @@ void TextureTiler::doStuff( const char *outTexFilename )
     
     assembleTiles();
 
-//    // TMP: copy a chunk of src image into the out image
-//    for (int j=0; j < outTexture_->height_; j++) {
-//        memcpy( outTexture_->imgdata_ + (outTexture_->width_)*j,
-//                sourceImage_->imgdata_ + (sourceImage_->width_)*j,
-//                outTexture_->width_ * 4 );
-//    }
+    // TODO: make filename and stuff settable
+    // NOTE: this assumes outTex is square
+    mesh_->save("outmesh.obj", outTexture_->width_ );
     
     finish();
 }
@@ -487,7 +536,7 @@ void TextureTiler::gatherTiles()
          (tri - mesh_->meshTris_) < mesh_->numMeshTris_;
          tri++) {
         
-        findOrCreateTile( tri );
+        tri->tile_ = findOrCreateTile( tri );
     }
     
     printf("Gather Tiles: %zu unique tiles\n", numTiles_ );

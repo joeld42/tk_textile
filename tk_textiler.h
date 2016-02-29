@@ -104,6 +104,8 @@ struct Mesh
     void assignEdges();
     
     static Mesh *load( const char *filename );
+    void save( const char *filename, int32_t outSz );
+    
     ~Mesh();
 };
   
