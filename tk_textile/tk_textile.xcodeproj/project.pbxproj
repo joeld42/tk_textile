@@ -1,0 +1,263 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6DAEE6E21C83664800167C19 /* tk_tiletex_main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6DAEE6DC1C83664800167C19 /* tk_tiletex_main.cpp */; };
+		6DAEE6E31C83664800167C19 /* tk_textiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6DAEE6DE1C83664800167C19 /* tk_textiler.cpp */; };
+		6DAEE6E51C83DBD800167C19 /* GLKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6DAEE6E41C83DBD800167C19 /* GLKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		6DBC54371C76DACF00D5D512 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		6DAEE6DB1C83664800167C19 /* tk_objfile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tk_objfile.h; path = ../../tk_objfile.h; sourceTree = "<group>"; };
+		6DAEE6DC1C83664800167C19 /* tk_tiletex_main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = tk_tiletex_main.cpp; path = ../../tk_tiletex_main.cpp; sourceTree = "<group>"; };
+		6DAEE6DD1C83664800167C19 /* tk_textiler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tk_textiler.h; path = ../../tk_textiler.h; sourceTree = "<group>"; };
+		6DAEE6DE1C83664800167C19 /* tk_textiler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = tk_textiler.cpp; path = ../../tk_textiler.cpp; sourceTree = "<group>"; };
+		6DAEE6DF1C83664800167C19 /* optionparser.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = optionparser.h; path = ../../optionparser.h; sourceTree = "<group>"; };
+		6DAEE6E01C83664800167C19 /* stb_image_write.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = stb_image_write.h; path = ../../stb_image_write.h; sourceTree = "<group>"; };
+		6DAEE6E11C83664800167C19 /* stb_image.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = stb_image.h; path = ../../stb_image.h; sourceTree = "<group>"; };
+		6DAEE6E41C83DBD800167C19 /* GLKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLKit.framework; path = System/Library/Frameworks/GLKit.framework; sourceTree = SDKROOT; };
+		6DBC54391C76DACF00D5D512 /* tk_textile */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = tk_textile; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6DBC54361C76DACF00D5D512 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6DAEE6E51C83DBD800167C19 /* GLKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6DBC54301C76DACF00D5D512 = {
+			isa = PBXGroup;
+			children = (
+				6DAEE6E41C83DBD800167C19 /* GLKit.framework */,
+				6DBC543B1C76DACF00D5D512 /* tk_textile */,
+				6DBC543A1C76DACF00D5D512 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6DBC543A1C76DACF00D5D512 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6DBC54391C76DACF00D5D512 /* tk_textile */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6DBC543B1C76DACF00D5D512 /* tk_textile */ = {
+			isa = PBXGroup;
+			children = (
+				6DAEE6DB1C83664800167C19 /* tk_objfile.h */,
+				6DAEE6DC1C83664800167C19 /* tk_tiletex_main.cpp */,
+				6DAEE6DD1C83664800167C19 /* tk_textiler.h */,
+				6DAEE6DE1C83664800167C19 /* tk_textiler.cpp */,
+				6DAEE6DF1C83664800167C19 /* optionparser.h */,
+				6DAEE6E01C83664800167C19 /* stb_image_write.h */,
+				6DAEE6E11C83664800167C19 /* stb_image.h */,
+			);
+			path = tk_textile;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6DBC54381C76DACF00D5D512 /* tk_textile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6DBC54401C76DACF00D5D512 /* Build configuration list for PBXNativeTarget "tk_textile" */;
+			buildPhases = (
+				6DBC54351C76DACF00D5D512 /* Sources */,
+				6DBC54361C76DACF00D5D512 /* Frameworks */,
+				6DBC54371C76DACF00D5D512 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = tk_textile;
+			productName = tk_textile;
+			productReference = 6DBC54391C76DACF00D5D512 /* tk_textile */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6DBC54311C76DACF00D5D512 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0720;
+				ORGANIZATIONNAME = "Joel Davis";
+				TargetAttributes = {
+					6DBC54381C76DACF00D5D512 = {
+						CreatedOnToolsVersion = 7.2;
+					};
+				};
+			};
+			buildConfigurationList = 6DBC54341C76DACF00D5D512 /* Build configuration list for PBXProject "tk_textile" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 6DBC54301C76DACF00D5D512;
+			productRefGroup = 6DBC543A1C76DACF00D5D512 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6DBC54381C76DACF00D5D512 /* tk_textile */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6DBC54351C76DACF00D5D512 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6DAEE6E21C83664800167C19 /* tk_tiletex_main.cpp in Sources */,
+				6DAEE6E31C83664800167C19 /* tk_textiler.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		6DBC543E1C76DACF00D5D512 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		6DBC543F1C76DACF00D5D512 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		6DBC54411C76DACF00D5D512 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		6DBC54421C76DACF00D5D512 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6DBC54341C76DACF00D5D512 /* Build configuration list for PBXProject "tk_textile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6DBC543E1C76DACF00D5D512 /* Debug */,
+				6DBC543F1C76DACF00D5D512 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6DBC54401C76DACF00D5D512 /* Build configuration list for PBXNativeTarget "tk_textile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6DBC54411C76DACF00D5D512 /* Debug */,
+				6DBC54421C76DACF00D5D512 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6DBC54311C76DACF00D5D512 /* Project object */;
+}

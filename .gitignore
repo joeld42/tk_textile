@@ -1,0 +1,6 @@
+.DS_Store
+res/.DS_Store
+xcuserdata/
+
+testoutmap.png
+dbgtiles/tile_*.png
