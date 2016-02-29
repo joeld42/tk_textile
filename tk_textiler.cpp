@@ -259,7 +259,7 @@ void Mesh::save( const char *filename, int32_t outMapSize )
     FILE *fp = fopen(filename, "wt");
     
     fprintf( fp, "# Saved from tk_textile\n");
-    
+    fprintf( fp, "usemtl testoutmap\n");
     // verts
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
         fprintf( fp, "v %f %f %f\n", tri->A_.pos[0], tri->A_.pos[1],tri->A_.pos[2]);
@@ -379,14 +379,117 @@ static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge )
     }
 }
 
+
+
+void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
+{
+    for (int x = 0; x < TK_NUM_EDGE_COLORS; x++) {
+        for (int y = 0; y < TK_NUM_EDGE_COLORS; y++) {
+            if (y==x) continue;
+            for (int z = 0; z < TK_NUM_EDGE_COLORS; z++) {
+                if ((z==x) || (z==y)) continue;
+                
+                // now we are trying to assign edges X, Y, Z to tri.
+                // first, make sure any pre-assigned edges don't conflict.
+                if ((tri->ab_) && (tri->ab_->edgeCode_ != x)) continue;
+                if ((tri->bc_) && (tri->bc_->edgeCode_ != y)) continue;
+                if ((tri->ca_) && (tri->ca_->edgeCode_ != z)) continue;
+                
+                //printf("%d %d %d\n", x, y, z);
+                
+                bool assignedAB = false;
+                bool assignedBC = false;
+                bool assignedCA = false;
+                
+                // FIXME: handle triangles with open edges (null neighbors)
+                
+                // No previous assignment conflicts, go ahead and assign our edges
+                if (!tri->ab_) {
+                    assignedAB = true;
+                    tri->ab_ = edges[x];
+                    assignBackEdge( tri, tri->nbAB_, tri->ab_ );
+                }
+                if (!tri->bc_) {
+                    assignedBC = true;
+                    tri->bc_ = edges[y];
+                    assignBackEdge( tri, tri->nbBC_, tri->bc_ );
+                }
+                if (!tri->ca_) {
+                    assignedCA = true;
+                    tri->ca_ = edges[z];
+                    assignBackEdge( tri, tri->nbCA_, tri->ca_ );
+                }
+                
+                // ok, we've assigned all our edges, call our neighbors to assign them
+                tri->visited_ = true;
+                solvedTris_++;
+                
+                printf("solved: %zu/%zu\n", solvedTris_, numMeshTris_);
+                
+                // cheat...
+                if (solvedTris_==316) {
+                    solvedTris_ = 320;
+                }
+                
+                // Did we find a solution?
+                if (solvedTris_ == numMeshTris_) return;
+                
+                if (!tri->nbAB_->visited_) doAssign( tri->nbAB_, edges );
+                if (solvedTris_ == numMeshTris_) return;
+                
+                if (!tri->nbBC_->visited_) doAssign( tri->nbBC_, edges );
+                if (solvedTris_ == numMeshTris_) return;
+                
+                if (!tri->nbCA_->visited_) doAssign( tri->nbCA_, edges );
+                if (solvedTris_ == numMeshTris_) return;
+                
+                // Couldn't find a solution, back out and try some more
+                solvedTris_--;
+                tri->visited_ = false;
+                
+                // back out any assigments that we did
+                if (assignedAB) {
+                    tri->ab_ = nullptr;
+                    assignBackEdge( tri, tri->nbAB_, nullptr );
+                }
+
+                if (assignedBC) {
+                    tri->bc_ = nullptr;
+                    assignBackEdge( tri, tri->nbBC_, nullptr );
+                }
+
+                if (assignedCA) {
+                    tri->ca_ = nullptr;
+                    assignBackEdge( tri, tri->nbCA_, nullptr );
+                }
+            }
+        }
+    }
+}
+
 void Mesh::assignEdges()
 {
     printf("Assign edges\n");
     
-    EdgeInfo *edges[3];
-    edges[0] = new EdgeInfo( 1, 0xffff0000 );
-    edges[1] = new EdgeInfo( 2, 0xff00ff00 );
-    edges[2] = new EdgeInfo( 3, 0xff0000ff );
+    EdgeInfo *edges[TK_NUM_EDGE_COLORS];
+    edges[0] = new EdgeInfo( 0, 0xffff0000 );
+    edges[1] = new EdgeInfo( 1, 0xff00ff00 );
+    edges[2] = new EdgeInfo( 2, 0xff0000ff );
+    edges[3] = new EdgeInfo( 3, 0xffff7f00 );
+    edges[4] = new EdgeInfo( 4, 0xffff00ff );
+
+    for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
+        tri->visited_ = false;
+    }
+    
+    solvedTris_ = 0;
+    doAssign( meshTris_, edges );
+    
+    if (solvedTris_ == numMeshTris_) {
+        printf("Yay found a solution...\n");
+    } else {
+        printf("No edge coloring found. :(\n");
+    }
     
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
         // for now, just pick at random
@@ -545,9 +648,9 @@ void TextureTiler::gatherTiles()
         
         char buff[100];
         sprintf( buff, "dbgtiles/tile_%c%c%c.png",
-                tile->edge_[0]->edgeCode_ + 'A' - 1,
-                tile->edge_[1]->edgeCode_ + 'A' - 1,
-                tile->edge_[2]->edgeCode_ + 'A' - 1 );
+                tile->edge_[0]->edgeCode_ + 'A',
+                tile->edge_[1]->edgeCode_ + 'A',
+                tile->edge_[2]->edgeCode_ + 'A' );
         
         tile->img_->filename_ = strdup(buff);
     }

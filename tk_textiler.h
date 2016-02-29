@@ -91,8 +91,12 @@ struct Triangle
     Triangle *nbCA_=nullptr;
     
     Tile *tile_=nullptr;
+    
+    bool visited_;
 };
 
+#define TK_NUM_EDGE_COLORS (5)
+    
 struct Mesh
 {
     char *filename_=nullptr;
@@ -102,6 +106,9 @@ struct Mesh
 
     void buildAdjacency();
     void assignEdges();
+
+    size_t solvedTris_;
+    void doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] );
     
     static Mesh *load( const char *filename );
     void save( const char *filename, int32_t outSz );
