@@ -49,6 +49,9 @@ struct EdgeInfo
     
     uint32_t edgeCode_;
     uint32_t debugColor_;
+    
+    // Where this edge lands on src image    
+    GLKVector3 srcPointA_, srcPointB_;
 };
     
     
@@ -105,7 +108,7 @@ struct Mesh
     Triangle *meshTris_;
 
     void buildAdjacency();
-    void assignEdges();
+    void assignEdges( EdgeInfo *edges[TK_NUM_EDGE_COLORS] );
 
     size_t solvedTris_;
     void doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] );
@@ -129,6 +132,8 @@ struct TextureTiler
     void finish();
     
     void debugDumpTiles();
+    
+    void placeEdge( EdgeInfo *edge );
     
     tapnik::Tile *findOrCreateTile( tapnik::Triangle *tri );
     

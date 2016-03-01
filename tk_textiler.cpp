@@ -15,6 +15,9 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#define TK_PI (3.1415926535897932384626433832795)
+#define TK_DEG2RAD (TK_PI/180.0)
+#define TK_RAD2DEG (180.0/TK_PI)
 #define TK_SQRT3_OVER_2 (0.86602540378443864676372)
 #define TK_SGN(x) ((x<0)?-1:((x>0)?1:0))
 #define TK_ABS(x) (((x)<0)?-(x):(x))
@@ -539,7 +542,7 @@ void makePermTable( int ndx, bool *used )
     }
 }
 
-void Mesh::assignEdges()
+void Mesh::assignEdges( EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
 {
     printf("Assign edges\n");
 
@@ -547,14 +550,6 @@ void Mesh::assignEdges()
     nEdgePerms = 0;
     bool used[TK_NUM_EDGE_COLORS] = {0};
     makePermTable( 0, used );
-
-    
-    EdgeInfo *edges[TK_NUM_EDGE_COLORS];
-    edges[0] = new EdgeInfo( 0, 0xffff0000 );
-    edges[1] = new EdgeInfo( 1, 0xff00ff00 );
-    edges[2] = new EdgeInfo( 2, 0xff0000ff );
-    edges[3] = new EdgeInfo( 3, 0xff008efc ); // 0xfffc8e00
-    edges[4] = new EdgeInfo( 4, 0xffff00ff );
 
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
         tri->visited_ = false;
@@ -618,10 +613,59 @@ void Tile::debugDrawAnnotations()
 
 void Tile::paintFromSource(Image *srcImage)
 {
-    // TMP: DEBUG assign a random transform
-    xform_ = GLKMatrix4MakeTranslation( randUniform( 0, srcImage->width_ - img_->width_),
-                                        randUniform( 0, srcImage->height_ - img_->height_),
-                                        0.0 );
+//    // TMP: DEBUG assign a random transform
+//    xform_ = GLKMatrix4MakeTranslation( randUniform( 0, srcImage->width_ - img_->width_),
+//                                        randUniform( 0, srcImage->height_ - img_->height_),
+//                                        0.0 );
+    
+
+    
+//    if ( (tri->ab_ == tile->edge_[0]) &&
+//        (tri->bc_ == tile->edge_[1]) &&
+//        (tri->ca_ == tile->edge_[2]) ) {
+
+
+    // find edge with color 0
+    EdgeInfo *edge;
+    GLKVector3 a, b;
+    if (edge_[0]->edgeCode_==0) {
+        //edge 0 is AB
+        edge = edge_[0];
+        a = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+        b = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+    } else if (edge_[1]->edgeCode_==0) {
+        //edge 1 is BC
+        edge = edge_[1];
+        a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+        b = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+    } else {
+        //edge 2 is CA
+        edge = edge_[2];
+        a = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+        b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+    }
+
+    
+
+    
+    GLKVector3 destA = edge->srcPointB_;
+    GLKVector3 destB = edge->srcPointA_;
+
+    
+    GLKVector3 translate = GLKVector3Subtract( destA, a );
+    float lengthAB = GLKVector3Length( GLKVector3Subtract( a, b ) );
+    float lengthDestAB = GLKVector3Length( GLKVector3Subtract( destA, destB ) );
+    float scale = lengthAB / lengthDestAB;
+    float angle = atan2f( translate.y, translate.x );
+    
+    // scale should be ~= 1.0 since we generated the target line the same size
+    printf("lengthA %f lengthDest %f Scale is %f\n", lengthAB, lengthDestAB, scale );
+    
+    GLKMatrix4 xform1 = GLKMatrix4MakeRotation( angle, 0.0, 0.0, 1.0 );
+    GLKMatrix4 xform2 = GLKMatrix4MakeTranslation( translate.x, translate.y, translate.z );
+    
+    //xform_ = xform2;
+    xform_ = GLKMatrix4Multiply( xform1, xform2 );
     
     for (int j=0; j < img_->height_; j++) {
         for (int i=0; i < img_->width_; i++) {
@@ -646,13 +690,40 @@ TextureTiler::~TextureTiler()
     delete sourceImage_;
 }
 
+void TextureTiler::placeEdge( EdgeInfo *edge )
+{
+    float edgeSz = (float)edgeSize_;
+    float halfEdgeSz = edgeSz / 2.0;
+    float randAngle = randUniform( 0.0, 360.0 ) * TK_DEG2RAD;
+    
+    GLKVector3 center = GLKVector3Make( randUniform( halfEdgeSz, sourceImage_->width_ - edgeSz ),
+                                        randUniform( halfEdgeSz, sourceImage_->height_ - edgeSz ), 0.0 );
+    
+    GLKVector3 v = GLKVector3MultiplyScalar( GLKVector3Make( cosf(randAngle), sinf(randAngle), 0.0 ), halfEdgeSz );
+    
+    edge->srcPointA_ = GLKVector3Add( center, v );
+    edge->srcPointB_ = GLKVector3Subtract( center, v );
+}
 
 // Does stuff.
 void TextureTiler::doStuff( const char *outTexFilename )
 {
+    // Make edge colors
+    EdgeInfo *edges[TK_NUM_EDGE_COLORS];
+    edges[0] = new EdgeInfo( 0, 0xffffffff );
+    edges[1] = new EdgeInfo( 1, 0xff00ff00 );
+    edges[2] = new EdgeInfo( 2, 0xff0000ff );
+    edges[3] = new EdgeInfo( 3, 0xff008efc );
+    edges[4] = new EdgeInfo( 4, 0xff7f007f );
+    
+    // initial placement of edges in source
+    for (int i=0; i < TK_NUM_EDGE_COLORS; i++) {
+        placeEdge( edges[i] );
+    }
+    
     // build mesh
     mesh_->buildAdjacency();
-    mesh_->assignEdges();
+    mesh_->assignEdges( edges );
     
     // make tiles
     gatherTiles();
