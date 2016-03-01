@@ -160,11 +160,17 @@ void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t c
 
 void Image::drawFatLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-    drawLine( x1, y1, x2, y2, color );
-    drawLine( x1-1, y1, x2-1, y2, color );
-    drawLine( x1+1, y1, x2+1, y2, color );
-    drawLine( x1, y1-1, x2, y2-1, color );
-    drawLine( x1, y1+1, x2, y2+1, color );
+//    drawLine( x1, y1, x2, y2, color );
+//    drawLine( x1-1, y1, x2-1, y2, color );
+//    drawLine( x1+1, y1, x2+1, y2, color );
+//    drawLine( x1, y1-1, x2, y2-1, color );
+//    drawLine( x1, y1+1, x2, y2+1, color );
+    
+    for (int i=-2; i <= 2; i++) {
+        for( int j=-2; j <= 2; j++) {
+            drawLine( x1+i, y1+j, x2+i, y2+j, color );
+        }
+    }
 }
 Image *Image::load( const char *filename )
 {
@@ -366,6 +372,11 @@ void Mesh::buildAdjacency()
     printf("build adjacency done...\n");
 }
 
+// should be factorial of TK_NUM_EDGE_COLORS + 1 (the extra is just padding for a copy)
+#define TK_NUM_EDGE_PERMS (121)
+static int edgePerms[TK_NUM_EDGE_PERMS][TK_NUM_EDGE_COLORS];
+static int nEdgePerms = 0;
+
 static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge )
 {
     if (nbr->nbAB_ == tri) {
@@ -379,23 +390,43 @@ static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge )
     }
 }
 
-
+static inline bool checkNeighbor( Triangle *tri ) {
+    int count[TK_NUM_EDGE_COLORS] = {0};
+    
+    if (tri->ab_) count[tri->ab_->edgeCode_]++;
+    if (tri->bc_) count[tri->bc_->edgeCode_]++;
+    if (tri->ca_) count[tri->ca_->edgeCode_]++;
+    
+    for (int i=0; i < TK_NUM_EDGE_COLORS; i++) {
+        if (count[i] > 1) {
+//            printf("Edge %d used %d times...\n", i, count[i]);
+            return false;
+        }
+    }
+    return true;
+}
 
 void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
 {
-    for (int x = 0; x < TK_NUM_EDGE_COLORS; x++) {
-        for (int y = 0; y < TK_NUM_EDGE_COLORS; y++) {
-            if (y==x) continue;
-            for (int z = 0; z < TK_NUM_EDGE_COLORS; z++) {
-                if ((z==x) || (z==y)) continue;
+    // Pick a random order to assign in
+    int p = (int)randUniform(0, TK_NUM_EDGE_PERMS-1);
+    
+    for (int xx = 0; xx < TK_NUM_EDGE_COLORS; xx++) {
+        for (int yy = 0; yy < TK_NUM_EDGE_COLORS; yy++) {
+            if (yy==xx) continue;
+            for (int zz = 0; zz < TK_NUM_EDGE_COLORS; zz++) {
+                if ((zz==xx) || (zz==yy)) continue;
+                
+                // get permuted edge colors
+                int x = edgePerms[p][xx];
+                int y = edgePerms[p][yy];
+                int z = edgePerms[p][zz];
                 
                 // now we are trying to assign edges X, Y, Z to tri.
                 // first, make sure any pre-assigned edges don't conflict.
                 if ((tri->ab_) && (tri->ab_->edgeCode_ != x)) continue;
                 if ((tri->bc_) && (tri->bc_->edgeCode_ != y)) continue;
                 if ((tri->ca_) && (tri->ca_->edgeCode_ != z)) continue;
-                
-                //printf("%d %d %d\n", x, y, z);
                 
                 bool assignedAB = false;
                 bool assignedBC = false;
@@ -404,48 +435,65 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                 // FIXME: handle triangles with open edges (null neighbors)
                 
                 // No previous assignment conflicts, go ahead and assign our edges
+                bool badAssign = false;
                 if (!tri->ab_) {
                     assignedAB = true;
                     tri->ab_ = edges[x];
                     assignBackEdge( tri, tri->nbAB_, tri->ab_ );
+                    
+                    if (!checkNeighbor(tri->nbAB_)) badAssign = true;
+                    
                 }
-                if (!tri->bc_) {
+                if ((!tri->bc_) && (!badAssign)) {
                     assignedBC = true;
                     tri->bc_ = edges[y];
                     assignBackEdge( tri, tri->nbBC_, tri->bc_ );
+                    
+                    if (!checkNeighbor(tri->nbBC_)) badAssign = true;
                 }
-                if (!tri->ca_) {
+                if ((!tri->ca_) && (!badAssign)) {
                     assignedCA = true;
                     tri->ca_ = edges[z];
                     assignBackEdge( tri, tri->nbCA_, tri->ca_ );
+                    
+                    if (!checkNeighbor(tri->nbCA_)) badAssign = true;
                 }
                 
-                // ok, we've assigned all our edges, call our neighbors to assign them
-                tri->visited_ = true;
-                solvedTris_++;
-                
-                printf("solved: %zu/%zu\n", solvedTris_, numMeshTris_);
-                
-                // cheat...
-                if (solvedTris_==316) {
-                    solvedTris_ = 320;
+                if (!badAssign)
+                {
+                    // ok, we've assigned all our edges, call our neighbors to assign them
+                    tri->visited_ = true;
+                    solvedTris_++;
+                    
+                    static int logcount=0;
+                    if (logcount++>=1000) {
+                        printf("solved: %zu/%zu\n", solvedTris_, numMeshTris_);
+                        logcount = 0;
+                    }
+                    
+                    // If we've solved all but the last tri, we've really solved the whole thing because we
+                    // know it's a closed mesh and that last triangle will be colored by it's neighbors
+                    // FIXME: generalize this by checking solved by counting unique edges not triangles.
+                    if (solvedTris_==numMeshTris_-1) {
+                        solvedTris_ = numMeshTris_;
+                    }
+                    
+                    // Did we find a solution?
+                    if (solvedTris_ == numMeshTris_) return;
+                    
+                    if (!tri->nbAB_->visited_) doAssign( tri->nbAB_, edges );
+                    if (solvedTris_ == numMeshTris_) return;
+                    
+                    if (!tri->nbBC_->visited_) doAssign( tri->nbBC_, edges );
+                    if (solvedTris_ == numMeshTris_) return;
+                    
+                    if (!tri->nbCA_->visited_) doAssign( tri->nbCA_, edges );
+                    if (solvedTris_ == numMeshTris_) return;
+                    
+                    // Couldn't find a solution, back out and try some more
+                    solvedTris_--;
+                    tri->visited_ = false;
                 }
-                
-                // Did we find a solution?
-                if (solvedTris_ == numMeshTris_) return;
-                
-                if (!tri->nbAB_->visited_) doAssign( tri->nbAB_, edges );
-                if (solvedTris_ == numMeshTris_) return;
-                
-                if (!tri->nbBC_->visited_) doAssign( tri->nbBC_, edges );
-                if (solvedTris_ == numMeshTris_) return;
-                
-                if (!tri->nbCA_->visited_) doAssign( tri->nbCA_, edges );
-                if (solvedTris_ == numMeshTris_) return;
-                
-                // Couldn't find a solution, back out and try some more
-                solvedTris_--;
-                tri->visited_ = false;
                 
                 // back out any assigments that we did
                 if (assignedAB) {
@@ -467,15 +515,45 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
     }
 }
 
+
+void makePermTable( int ndx, bool *used )
+{
+    if (ndx==TK_NUM_EDGE_COLORS) {
+        // found a permutation, yay
+//        printf("PERM %d: ", nEdgePerms );
+        for (int i = 0; i < ndx; i++) {
+//            printf("%d ", edgePerms[nEdgePerms][i] );
+            edgePerms[nEdgePerms+1][i] = edgePerms[nEdgePerms][i];
+        }
+//        printf("\n");
+        nEdgePerms++;
+    } else {
+        for (int i = 0; i < TK_NUM_EDGE_COLORS; i++) {
+            if (!used[i]) {
+                used[i] = true;
+                edgePerms[nEdgePerms][ndx] = i;
+                makePermTable( ndx+1, used );
+                used[i] = false;
+            }
+        }
+    }
+}
+
 void Mesh::assignEdges()
 {
     printf("Assign edges\n");
+
+    // generate permutation table
+    nEdgePerms = 0;
+    bool used[TK_NUM_EDGE_COLORS] = {0};
+    makePermTable( 0, used );
+
     
     EdgeInfo *edges[TK_NUM_EDGE_COLORS];
     edges[0] = new EdgeInfo( 0, 0xffff0000 );
     edges[1] = new EdgeInfo( 1, 0xff00ff00 );
     edges[2] = new EdgeInfo( 2, 0xff0000ff );
-    edges[3] = new EdgeInfo( 3, 0xffff7f00 );
+    edges[3] = new EdgeInfo( 3, 0xff008efc ); // 0xfffc8e00
     edges[4] = new EdgeInfo( 4, 0xffff00ff );
 
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
