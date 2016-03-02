@@ -68,6 +68,8 @@ const option::Descriptor usage[] = {
 
 int main(int argc, const char * argv[])
 {
+    srand( 1117 );
+    
     tapnik::TextureTiler *textiler = new tapnik::TextureTiler();
     
     argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present

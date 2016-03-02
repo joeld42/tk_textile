@@ -124,6 +124,8 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
+    return;
+    
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
     int32_t dy=y2-y1;      /* the vertical distance of the line */
     int32_t dxabs=TK_ABS(dx);
@@ -163,12 +165,6 @@ void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t c
 
 void Image::drawFatLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-//    drawLine( x1, y1, x2, y2, color );
-//    drawLine( x1-1, y1, x2-1, y2, color );
-//    drawLine( x1+1, y1, x2+1, y2, color );
-//    drawLine( x1, y1-1, x2, y2-1, color );
-//    drawLine( x1, y1+1, x2, y2+1, color );
-    
     for (int i=-2; i <= 2; i++) {
         for( int j=-2; j <= 2; j++) {
             drawLine( x1+i, y1+j, x2+i, y2+j, color );
@@ -380,14 +376,17 @@ void Mesh::buildAdjacency()
 static int edgePerms[TK_NUM_EDGE_PERMS][TK_NUM_EDGE_COLORS];
 static int nEdgePerms = 0;
 
-static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge )
+static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge, bool flipped )
 {
     if (nbr->nbAB_ == tri) {
         nbr->ab_ = edge;
+        nbr->flipped_[0] = flipped;
     } else if (nbr->nbBC_ == tri) {
         nbr->bc_ = edge;
+        nbr->flipped_[1] = flipped;
     } else if (nbr->nbCA_ == tri) {
         nbr->ca_ = edge;
+        nbr->flipped_[2] = flipped;
     } else {
         printf("WARN: couldn't find back edge for nbr.\n");
     }
@@ -442,7 +441,7 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                 if (!tri->ab_) {
                     assignedAB = true;
                     tri->ab_ = edges[x];
-                    assignBackEdge( tri, tri->nbAB_, tri->ab_ );
+                    assignBackEdge( tri, tri->nbAB_, tri->ab_, !tri->flipped_[0] );
                     
                     if (!checkNeighbor(tri->nbAB_)) badAssign = true;
                     
@@ -450,14 +449,14 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                 if ((!tri->bc_) && (!badAssign)) {
                     assignedBC = true;
                     tri->bc_ = edges[y];
-                    assignBackEdge( tri, tri->nbBC_, tri->bc_ );
+                    assignBackEdge( tri, tri->nbBC_, tri->bc_, !tri->flipped_[1] );
                     
                     if (!checkNeighbor(tri->nbBC_)) badAssign = true;
                 }
                 if ((!tri->ca_) && (!badAssign)) {
                     assignedCA = true;
                     tri->ca_ = edges[z];
-                    assignBackEdge( tri, tri->nbCA_, tri->ca_ );
+                    assignBackEdge( tri, tri->nbCA_, tri->ca_, !tri->flipped_[2] );
                     
                     if (!checkNeighbor(tri->nbCA_)) badAssign = true;
                 }
@@ -501,17 +500,17 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                 // back out any assigments that we did
                 if (assignedAB) {
                     tri->ab_ = nullptr;
-                    assignBackEdge( tri, tri->nbAB_, nullptr );
+                    assignBackEdge( tri, tri->nbAB_, nullptr, false );
                 }
 
                 if (assignedBC) {
                     tri->bc_ = nullptr;
-                    assignBackEdge( tri, tri->nbBC_, nullptr );
+                    assignBackEdge( tri, tri->nbBC_, nullptr, false );
                 }
 
                 if (assignedCA) {
                     tri->ca_ = nullptr;
-                    assignBackEdge( tri, tri->nbCA_, nullptr );
+                    assignBackEdge( tri, tri->nbCA_, nullptr, false );
                 }
             }
         }
@@ -568,17 +567,17 @@ void Mesh::assignEdges( EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
         // for now, just pick at random
         if (!tri->ab_) {
             tri->ab_ = edges[ rand() % 3 ];
-            assignBackEdge( tri, tri->nbAB_, tri->ab_ );
+            assignBackEdge( tri, tri->nbAB_, tri->ab_, !tri->flipped_[0] );
         }
         
         if (!tri->bc_) {
             tri->bc_ = edges[ rand() % 3 ];
-            assignBackEdge( tri, tri->nbBC_, tri->bc_ );
+            assignBackEdge( tri, tri->nbBC_, tri->bc_,  !tri->flipped_[1] );
         }
         
         if (!tri->ca_) {
             tri->ca_ = edges[ rand() % 3 ];
-            assignBackEdge( tri, tri->nbCA_, tri->ca_ );
+            assignBackEdge( tri, tri->nbCA_, tri->ca_,  !tri->flipped_[2] );
         }
     }
     
@@ -631,41 +630,72 @@ void Tile::paintFromSource(Image *srcImage)
     if (edge_[0]->edgeCode_==0) {
         //edge 0 is AB
         edge = edge_[0];
-        a = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
-        b = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+        if (!flipped_[0]) {
+            a = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+            b = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+        } else {
+            b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+            a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+        }
     } else if (edge_[1]->edgeCode_==0) {
         //edge 1 is BC
         edge = edge_[1];
-        a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
-        b = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+        if (!flipped_[1]) {
+            a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+            b = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+        } else {
+            b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+            a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+        }
     } else {
         //edge 2 is CA
         edge = edge_[2];
-        a = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
-        b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+        if (!flipped_[2]) {
+            a = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+            b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+        } else {
+            b = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+            a = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+        }
     }
-
-    
 
     
     GLKVector3 destA = edge->srcPointB_;
     GLKVector3 destB = edge->srcPointA_;
-
+    GLKVector3 srcEdgeDir = GLKVector3Subtract( b, a );
+    GLKVector3 destEdgeDir = GLKVector3Subtract( destB, destA );
+    
+    float angSrc =atan2f( srcEdgeDir.y, srcEdgeDir.x );
+    float angDest = atan2f( destEdgeDir.y, destEdgeDir.x );
+    
     
     GLKVector3 translate = GLKVector3Subtract( destA, a );
     float lengthAB = GLKVector3Length( GLKVector3Subtract( a, b ) );
     float lengthDestAB = GLKVector3Length( GLKVector3Subtract( destA, destB ) );
     float scale = lengthAB / lengthDestAB;
-    float angle = atan2f( translate.y, translate.x );
+    float angle = angDest - angSrc;
     
     // scale should be ~= 1.0 since we generated the target line the same size
     printf("lengthA %f lengthDest %f Scale is %f\n", lengthAB, lengthDestAB, scale );
     
-    GLKMatrix4 xform1 = GLKMatrix4MakeRotation( angle, 0.0, 0.0, 1.0 );
+    GLKMatrix4 m3 = GLKMatrix4MakeTranslation( a.x, a.y, a.z );
+    GLKMatrix4 m2 = GLKMatrix4MakeRotation( angle, 0.0, 0.0, 1.0 );
+    GLKMatrix4 m1 = GLKMatrix4MakeTranslation( -a.x, -a.y, -a.z );
+    
+    GLKMatrix4 xform1 = GLKMatrix4Multiply(m3, GLKMatrix4Multiply(m2, m1));
     GLKMatrix4 xform2 = GLKMatrix4MakeTranslation( translate.x, translate.y, translate.z );
     
-    //xform_ = xform2;
-    xform_ = GLKMatrix4Multiply( xform1, xform2 );
+//    xform_ = xform2;
+    xform_ = GLKMatrix4Multiply( xform2, xform1 );
+    
+    // DBG: draw transformed triangle into source image
+    GLKVector3 aa = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileA_[0], tileA_[1], 0.0 ));
+    GLKVector3 bb = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileB_[0], tileB_[1], 0.0 ));
+    GLKVector3 cc = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileC_[0], tileC_[1], 0.0 ));
+    
+    srcImage->drawLine( aa.x, aa.y, bb.x, bb.y );
+    srcImage->drawLine( bb.x, bb.y, cc.x, cc.y );
+    srcImage->drawLine( cc.x, cc.y, aa.x, aa.y );
     
     for (int j=0; j < img_->height_; j++) {
         for (int i=0; i < img_->width_; i++) {
@@ -696,13 +726,18 @@ void TextureTiler::placeEdge( EdgeInfo *edge )
     float halfEdgeSz = edgeSz / 2.0;
     float randAngle = randUniform( 0.0, 360.0 ) * TK_DEG2RAD;
     
-    GLKVector3 center = GLKVector3Make( randUniform( halfEdgeSz, sourceImage_->width_ - edgeSz ),
-                                        randUniform( halfEdgeSz, sourceImage_->height_ - edgeSz ), 0.0 );
+    GLKVector3 center = GLKVector3Make( randUniform( edgeSz, sourceImage_->width_ - edgeSz) ,
+                                        randUniform( edgeSz, sourceImage_->height_ - edgeSz)  , 0.0 );
     
     GLKVector3 v = GLKVector3MultiplyScalar( GLKVector3Make( cosf(randAngle), sinf(randAngle), 0.0 ), halfEdgeSz );
     
     edge->srcPointA_ = GLKVector3Add( center, v );
     edge->srcPointB_ = GLKVector3Subtract( center, v );
+    
+    printf("Edge %d -- A %3.2f %3.2f %3.2f B %3.2f %3.2f %3.2f\n",
+           edge->edgeCode_,
+           edge->srcPointA_.x, edge->srcPointA_.y, edge->srcPointA_.z,
+           edge->srcPointB_.x, edge->srcPointB_.y, edge->srcPointB_.z );
 }
 
 // Does stuff.
@@ -710,7 +745,7 @@ void TextureTiler::doStuff( const char *outTexFilename )
 {
     // Make edge colors
     EdgeInfo *edges[TK_NUM_EDGE_COLORS];
-    edges[0] = new EdgeInfo( 0, 0xffffffff );
+    edges[0] = new EdgeInfo( 0, 0xffff0000 );
     edges[1] = new EdgeInfo( 1, 0xff00ff00 );
     edges[2] = new EdgeInfo( 2, 0xff0000ff );
     edges[3] = new EdgeInfo( 3, 0xff008efc );
@@ -719,6 +754,10 @@ void TextureTiler::doStuff( const char *outTexFilename )
     // initial placement of edges in source
     for (int i=0; i < TK_NUM_EDGE_COLORS; i++) {
         placeEdge( edges[i] );
+        
+        sourceImage_->drawFatLine( edges[i]->srcPointA_.x, edges[i]->srcPointA_.y,
+                                   edges[i]->srcPointB_.x, edges[i]->srcPointB_.y,
+                                  edges[i]->debugColor_ );
     }
     
     // build mesh
@@ -747,9 +786,9 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
     Tile *result = nullptr;
     for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
         Tile *tile = tiles_[tileNdx];
-        if ( (tri->ab_ == tile->edge_[0]) &&
-             (tri->bc_ == tile->edge_[1]) &&
-             (tri->ca_ == tile->edge_[2]) ) {
+        if ( (tri->ab_ == tile->edge_[0]) && (tri->flipped_[0] == tile->flipped_[0]) &&
+             (tri->bc_ == tile->edge_[1]) && (tri->flipped_[1] == tile->flipped_[1]) &&
+             (tri->ca_ == tile->edge_[2]) && (tri->flipped_[2] == tile->flipped_[2])) {
             result = tile;
             break;
         }
@@ -776,6 +815,11 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
         result->edge_[0] = tri->ab_;
         result->edge_[1] = tri->bc_;
         result->edge_[2] = tri->ca_;
+        
+        for (int i=0; i < 3; i++) {
+            result->flipped_[i] = tri->flipped_[i];
+        }
+        
         tiles_[numTiles_++] = result;
     }
     
@@ -796,10 +840,10 @@ void TextureTiler::gatherTiles()
         Tile *tile = tiles_[tileNdx];
         
         char buff[100];
-        sprintf( buff, "dbgtiles/tile_%c%c%c.png",
-                tile->edge_[0]->edgeCode_ + 'A',
-                tile->edge_[1]->edgeCode_ + 'A',
-                tile->edge_[2]->edgeCode_ + 'A' );
+        sprintf( buff, "dbgtiles/tile_%c%c%c%c%c%c.png",
+                tile->flipped_[0]?'n':'f', tile->edge_[0]->edgeCode_ + 'A',
+                tile->flipped_[1]?'n':'f', tile->edge_[1]->edgeCode_ + 'A',
+                tile->flipped_[2]?'n':'f', tile->edge_[2]->edgeCode_ + 'A' );
         
         tile->img_->filename_ = strdup(buff);
     }
@@ -872,6 +916,10 @@ void TextureTiler::debugDumpTiles()
         
         tile->img_->save();
     }
+    
+    // save the annotated source image
+    sourceImage_->filename_ = strdup( "dbg_source.png" );
+    sourceImage_->save();
 }
 
 void TextureTiler::finish()

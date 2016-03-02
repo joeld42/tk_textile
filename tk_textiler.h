@@ -66,6 +66,8 @@ struct Tile
     EdgeInfo *edge_[3];
     tapnik::Image *img_;
     
+    bool flipped_[3]; // AB, BC, CA
+    
     // Xform into source image
     GLKMatrix4 xform_;
     
@@ -92,6 +94,8 @@ struct Triangle
     Triangle *nbAB_=nullptr;
     Triangle *nbBC_=nullptr;
     Triangle *nbCA_=nullptr;
+    
+    bool flipped_[3]; // AB, BC, CA
     
     Tile *tile_=nullptr;
     
@@ -142,7 +146,7 @@ struct TextureTiler
     char *outTexFilename_ = nullptr;
     tapnik::Image *outTexture_ = nullptr;
     
-    uint32_t edgeSize_ = 180; // size of output triangle edges
+    uint32_t edgeSize_ = 160; // size of output triangle edges
     
     tapnik::Mesh *mesh_;
 
