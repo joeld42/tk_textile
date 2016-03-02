@@ -17,6 +17,7 @@
 
 // TODO list --------
 // - blend between tiles
+// - correspondence points in placeEdge
 // - graphcut between tiles
 // - handle open meshes
 // - make all things cmd line options
@@ -43,6 +44,30 @@ float randUniform()
 float randUniform( float minVal, float maxVal )
 {
     return minVal + (randUniform() * (maxVal-minVal));
+}
+
+//http://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
+GLKVector3 barycentric( GLKVector3 a, GLKVector3 b, GLKVector3 c,
+                       GLKVector3 p )
+{
+    GLKVector3 result;
+    
+    GLKVector3 v0 = GLKVector3Subtract(b, a);
+    GLKVector3 v1 = GLKVector3Subtract(c, a);
+    GLKVector3 v2 = GLKVector3Subtract(p, a);
+    
+    float d00 = GLKVector3DotProduct( v0, v0 );
+    float d01 = GLKVector3DotProduct( v0, v1 );
+    float d11 = GLKVector3DotProduct( v1, v1 );
+    float d20 = GLKVector3DotProduct( v2, v0 );
+    float d21 = GLKVector3DotProduct( v2, v1 );
+    
+    float denom = d00*d11 - d01*d01;
+    result.y = (d11*d20 - d01*d21) / denom;
+    result.z = (d00*d21 - d01*d20) / denom;
+    result.x = 1.0f - result.y - result.z;
+    
+    return result;
 }
 
 void *readEntireFile( const char *filename, size_t *out_filesz )
@@ -131,7 +156,6 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-    return;
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
     int32_t dy=y2-y1;      /* the vertical distance of the line */
     int32_t dxabs=TK_ABS(dx);
@@ -709,6 +733,9 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
     xform_ = GLKMatrix4Multiply( xform2, xform1 );
     
     // DBG: draw transformed triangle into source image
+    GLKVector3 ta = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+    GLKVector3 tb = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+    GLKVector3 tc = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
     GLKVector3 aa = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileA_[0], tileA_[1], 0.0 ));
     GLKVector3 bb = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileB_[0], tileB_[1], 0.0 ));
     GLKVector3 cc = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileC_[0], tileC_[1], 0.0 ));
@@ -717,17 +744,24 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
     srcImage->drawLine( bb.x, bb.y, cc.x, cc.y );
     srcImage->drawLine( cc.x, cc.y, aa.x, aa.y );
     
+    // Copy the pixels from source into tile
     for (int j=0; j < img_->height_; j++) {
         for (int i=0; i < img_->width_; i++) {
             
-            // TODO: test point for including in triangle
+            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
+            GLKVector3 b = barycentric(ta, tb, tc, p );
             
-            GLKVector4 samplePos = GLKVector4Make( (float)i, (float)j, 0.0, 1.0 );
-            samplePos = GLKMatrix4MultiplyVector4( xform_, samplePos);
-            
-            // TODO: (maybe) fractional lookup and interpolate
-            uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
-            destImage->drawPixel(i, j, sampleVal );
+            if ((b.x >=0.0) && (b.x <=1.0) &&
+                (b.y >=0.0) && (b.y <=1.0) &&
+                (b.z >=0.0) && (b.z <=1.0) )
+            {
+                GLKVector4 samplePos = GLKVector4Make( (float)i, (float)j, 0.0, 1.0 );
+                samplePos = GLKMatrix4MultiplyVector4( xform_, samplePos);
+                
+                // TODO: (maybe) fractional lookup and interpolate
+                uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
+                destImage->drawPixel(i, j, sampleVal );
+            }
         }
     }
 }
