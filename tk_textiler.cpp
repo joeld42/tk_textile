@@ -15,6 +15,13 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+// TODO list --------
+// - blend between tiles
+// - graphcut between tiles
+// - handle open meshes
+// - make all things cmd line options
+// - 
+
 #define TK_PI (3.1415926535897932384626433832795)
 #define TK_DEG2RAD (TK_PI/180.0)
 #define TK_RAD2DEG (180.0/TK_PI)
@@ -125,7 +132,6 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
     return;
-    
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
     int32_t dy=y2-y1;      /* the vertical distance of the line */
     int32_t dxabs=TK_ABS(dx);
@@ -612,22 +618,36 @@ void Tile::debugDrawAnnotations()
 
 void Tile::paintFromSource(Image *srcImage)
 {
-//    // TMP: DEBUG assign a random transform
-//    xform_ = GLKMatrix4MakeTranslation( randUniform( 0, srcImage->width_ - img_->width_),
-//                                        randUniform( 0, srcImage->height_ - img_->height_),
-//                                        0.0 );
+    // Paint first edge onto the tile
+    int ndx = 0; // dbg crap
+    int targ = 3;
+    if (edge_[1]->edgeCode_ == targ) ndx = 1;
+    else if (edge_[2]->edgeCode_ == targ) ndx = 2;
+    paintFromSourceEdge( img_, srcImage, ndx );
     
-
+#if 0
+    // Paint the next edge onto a temp image
+    Image *tmpImg = new Image( img_->width_, img_->height_ );
+    paintFromSourceEdge( tmpImg, srcImage, 1 );
     
-//    if ( (tri->ab_ == tile->edge_[0]) &&
-//        (tri->bc_ == tile->edge_[1]) &&
-//        (tri->ca_ == tile->edge_[2]) ) {
+    // blend
+    for (int j=0; j < img_->height_; j++) {
+        for (int i=img_->width_/2; i < img_->width_; i++) {
+            img_->drawPixel(i, j, tmpImg->getPixel(i,j));
+        }
+    }
+    
+    delete tmpImg;
+#endif
+    
+}
 
-
-    // find edge with color 0
+void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex )
+{
+    // Get requested edge
     EdgeInfo *edge;
     GLKVector3 a, b;
-    if (edge_[0]->edgeCode_==0) {
+    if (edgeIndex==0) {
         //edge 0 is AB
         edge = edge_[0];
         if (!flipped_[0]) {
@@ -637,7 +657,7 @@ void Tile::paintFromSource(Image *srcImage)
             b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
             a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
         }
-    } else if (edge_[1]->edgeCode_==0) {
+    } else if (edgeIndex==1) {
         //edge 1 is BC
         edge = edge_[1];
         if (!flipped_[1]) {
@@ -647,7 +667,7 @@ void Tile::paintFromSource(Image *srcImage)
             b = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
             a = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
         }
-    } else {
+    } else { // edgeIndex==2
         //edge 2 is CA
         edge = edge_[2];
         if (!flipped_[2]) {
@@ -707,7 +727,7 @@ void Tile::paintFromSource(Image *srcImage)
             
             // TODO: (maybe) fractional lookup and interpolate
             uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
-            img_->drawPixel(i, j, sampleVal );
+            destImage->drawPixel(i, j, sampleVal );
         }
     }
 }

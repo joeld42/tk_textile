@@ -76,6 +76,7 @@ struct Tile
     uint32_t packY_ = 0;
     
     void paintFromSource( tapnik::Image *srcImage );
+    void paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex );
     
     void debugDrawAnnotations();
 };
