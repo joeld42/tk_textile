@@ -29,12 +29,46 @@
 #define TK_SQRT3_OVER_2 (0.86602540378443864676372)
 #define TK_SGN(x) ((x<0)?-1:((x>0)?1:0))
 #define TK_ABS(x) (((x)<0)?-(x):(x))
+#define TK_LERP(a,b,t) (((1.0-t)*(a)) + (t*(b)))
+
 
 using namespace tapnik;
 
 // ==================================================
 # pragma mark - Misc
 // ==================================================
+
+static inline GLKVector3 lerpVec3( GLKVector3 a, GLKVector3 b, float t )
+{
+    return GLKVector3Make( TK_LERP(a.x,b.x,t),
+                           TK_LERP(a.y,b.y,t),
+                           TK_LERP(a.z,b.z,t) );
+}
+
+static inline GLKVector4 lerpVec4( GLKVector4 a, GLKVector4 b, float t )
+{
+    return GLKVector4Make( TK_LERP(a.x,b.x,t),
+                          TK_LERP(a.y,b.y,t),
+                          TK_LERP(a.z,b.z,t),
+                          TK_LERP(a.w,b.w,t) );
+}
+
+static inline float saturate( float x )
+{
+    if (x < 0.0) return 0.0;
+    else if (x > 1.0) return 1.0;
+    else return x;
+}
+
+
+static inline float smoothstep(float edge0, float edge1, float x)
+{
+    // Scale, bias and saturate x to 0..1 range
+    x = saturate((x - edge0)/(edge1 - edge0));
+    // Evaluate polynomial
+    return x*x*(3 - 2*x);
+}
+
 
 float randUniform()
 {
@@ -68,6 +102,24 @@ GLKVector3 barycentric( GLKVector3 a, GLKVector3 b, GLKVector3 c,
     result.x = 1.0f - result.y - result.z;
     
     return result;
+}
+
+static inline GLKVector4 floatColor( uint32_t pixelColor )
+{
+    // abgr(uint32) -> rgba (float)
+    return GLKVector4Make( (float)(pixelColor  & 0xff) / 255.0,
+                           (float)((pixelColor >> 8) & 0xff) / 255.0,
+                           (float)((pixelColor >> 16) & 0xff) / 255.0,
+                           (float)((pixelColor >> 24) & 0xff) / 255.0 );
+}
+
+static inline uint32_t pixelColor( GLKVector4 floatColor )
+{
+    // rgba(float -> abgr(uint32)
+    return ((int)(floatColor.a*0xff) << 24) |
+           ((int)(floatColor.b*0xff) << 16) |
+           ((int)(floatColor.g*0xff) << 8) |
+            (int)(floatColor.r*0xff);
 }
 
 void *readEntireFile( const char *filename, size_t *out_filesz )
@@ -137,6 +189,20 @@ void Image::clear( uint32_t color )
     memset_pattern4( imgdata_, &color, sizeof(uint32_t)*4*width_*height_ );
 }
 
+// for debugging use only
+inline void Image::drawPixelTinted( int32_t x, int32_t y, uint32_t origColor, uint32_t tintColor, float tintAmt  )
+{
+    GLKVector4 origColorf = floatColor( origColor );
+    GLKVector4 tintColorf = floatColor(tintColor );
+
+    GLKVector4 colorf = lerpVec4( origColorf, tintColorf, tintAmt );
+    uint32_t color = pixelColor( colorf );
+    
+    if ((x>=0) && (y>=0) && (x < width_) && (y < height_)) {
+        imgdata_[ (y * width_) + x ] = color;
+    }
+}
+
 inline void Image::drawPixel( int32_t x, int32_t y, uint32_t color  )
 {
     if ((x>=0) && (y>=0) && (x < width_) && (y < height_)) {
@@ -156,6 +222,9 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
+    // DBG
+    return;
+    
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
     int32_t dy=y2-y1;      /* the vertical distance of the line */
     int32_t dxabs=TK_ABS(dx);
@@ -224,7 +293,7 @@ void Image::drawImage( int32_t x, int32_t y, tapnik::Image *img )
 {
     for (int32_t j = 0; j < img->height_; j++) {
         for (int32_t i = 0; i < img->width_; i++) {
-            // TODO: alpha blend. 
+            // TODO: alpha blend.
             drawPixel( x+i, y+j, img->getPixel(i, j));
         }
     }
@@ -640,29 +709,84 @@ void Tile::debugDrawAnnotations()
     img_->drawFatLine(tileC_[0], tileC_[1], tileA_[0], tileA_[1], edge_[2]->debugColor_ );
 }
 
+
 void Tile::paintFromSource(Image *srcImage)
 {
     // Paint first edge onto the tile
-    int ndx = 0; // dbg crap
-    int targ = 3;
-    if (edge_[1]->edgeCode_ == targ) ndx = 1;
-    else if (edge_[2]->edgeCode_ == targ) ndx = 2;
-    paintFromSourceEdge( img_, srcImage, ndx );
+//    int ndx = 0; // dbg crap
+//    int targ = 3;
+//    if (edge_[1]->edgeCode_ == targ) ndx = 1;
+//    else if (edge_[2]->edgeCode_ == targ) ndx = 2;
+    paintFromSourceEdge( img_, srcImage, 0 );
     
-#if 0
     // Paint the next edge onto a temp image
     Image *tmpImg = new Image( img_->width_, img_->height_ );
     paintFromSourceEdge( tmpImg, srcImage, 1 );
     
+    GLKVector3 ta = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
+    GLKVector3 tb = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
+    GLKVector3 tc = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
+
+    float blendSharpness = 0.9; // higher value = more sharper edge
     // blend
     for (int j=0; j < img_->height_; j++) {
-        for (int i=img_->width_/2; i < img_->width_; i++) {
-            img_->drawPixel(i, j, tmpImg->getPixel(i,j));
+        for (int i=0; i < img_->width_; i++) {
+
+            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
+            GLKVector3 b = barycentric(ta, tb, tc, p );
+            
+            if ((b.x >=0.0) && (b.x <=1.0) &&
+                (b.y >=0.0) && (b.y <=1.0) &&
+                (b.z >=0.0) && (b.z <=1.0) )
+            {
+                float aa = smoothstep( 0.0, b.x, b.z );
+                float bb = smoothstep( 0.0, b.x, b.y );
+                float blendVal = pow(aa*bb, blendSharpness);
+                
+                GLKVector4 baseColorf = floatColor( img_->getPixel(i,j) );
+                GLKVector4 tileColorf = floatColor( tmpImg->getPixel(i, j));
+                GLKVector4 blendColorf = lerpVec4( baseColorf, tileColorf, blendVal );
+                blendColorf.a = 1.0; // fixme
+                uint32_t blendColor = pixelColor(blendColorf );
+                
+                img_->drawPixel(i, j, blendColor );
+            }
+
+        }
+    }
+
+    // Paint the last edge onto a temp image
+    paintFromSourceEdge( tmpImg, srcImage, 2 );
+    
+    // blend
+    for (int j=0; j < img_->height_; j++) {
+        for (int i=0; i < img_->width_; i++) {
+            
+            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
+            GLKVector3 b = barycentric(ta, tb, tc, p );
+            
+            if ((b.x >=0.0) && (b.x <=1.0) &&
+                (b.y >=0.0) && (b.y <=1.0) &&
+                (b.z >=0.0) && (b.z <=1.0) )
+            {
+                float aa = smoothstep( 0.0, b.y, b.z );
+                float bb = smoothstep( 0.0, b.y, b.x );
+                float blendVal = pow(aa*bb, blendSharpness);
+                
+                GLKVector4 baseColorf = floatColor( img_->getPixel(i,j) );
+                GLKVector4 tileColorf = floatColor( tmpImg->getPixel(i, j));
+                GLKVector4 blendColorf = lerpVec4( baseColorf, tileColorf, blendVal );
+                blendColorf.a = 1.0; // fixme
+                uint32_t blendColor = pixelColor(blendColorf );
+                
+                img_->drawPixel(i, j, blendColor );
+            }
+            
         }
     }
     
     delete tmpImg;
-#endif
+
     
 }
 
@@ -760,7 +884,11 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
                 
                 // TODO: (maybe) fractional lookup and interpolate
                 uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
+#if 0
                 destImage->drawPixel(i, j, sampleVal );
+#else
+                destImage->drawPixelTinted(i, j, sampleVal, edge->debugColor_, 0.2 );
+#endif
             }
         }
     }

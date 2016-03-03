@@ -31,6 +31,7 @@ struct Image
     ~Image();
 
     inline void drawPixel( int32_t x, int32_t y, uint32_t color=0xffffffff );
+    inline void drawPixelTinted( int32_t x, int32_t y, uint32_t color, uint32_t tintColor, float tintAmt  );
     inline uint32_t getPixel( int32_t x, int32_t y );
     void drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color=0xffffffff );
     void drawFatLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color=0xffffffff );
