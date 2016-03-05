@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6D72FC0B1C8AC35700D2C611 /* jr_vectorfont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6D72FC091C8AC35700D2C611 /* jr_vectorfont.cpp */; };
 		6DAEE6E21C83664800167C19 /* tk_tiletex_main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6DAEE6DC1C83664800167C19 /* tk_tiletex_main.cpp */; };
 		6DAEE6E31C83664800167C19 /* tk_textiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6DAEE6DE1C83664800167C19 /* tk_textiler.cpp */; };
 		6DAEE6E51C83DBD800167C19 /* GLKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6DAEE6E41C83DBD800167C19 /* GLKit.framework */; };
@@ -25,6 +26,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		6D72FC091C8AC35700D2C611 /* jr_vectorfont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = jr_vectorfont.cpp; path = ../../jr_vectorfont.cpp; sourceTree = "<group>"; };
+		6D72FC0A1C8AC35700D2C611 /* jr_vectorfont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = jr_vectorfont.h; path = ../../jr_vectorfont.h; sourceTree = "<group>"; };
 		6DAEE6DB1C83664800167C19 /* tk_objfile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tk_objfile.h; path = ../../tk_objfile.h; sourceTree = "<group>"; };
 		6DAEE6DC1C83664800167C19 /* tk_tiletex_main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = tk_tiletex_main.cpp; path = ../../tk_tiletex_main.cpp; sourceTree = "<group>"; };
 		6DAEE6DD1C83664800167C19 /* tk_textiler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tk_textiler.h; path = ../../tk_textiler.h; sourceTree = "<group>"; };
@@ -68,6 +71,8 @@
 		6DBC543B1C76DACF00D5D512 /* tk_textile */ = {
 			isa = PBXGroup;
 			children = (
+				6D72FC091C8AC35700D2C611 /* jr_vectorfont.cpp */,
+				6D72FC0A1C8AC35700D2C611 /* jr_vectorfont.h */,
 				6DAEE6DB1C83664800167C19 /* tk_objfile.h */,
 				6DAEE6DC1C83664800167C19 /* tk_tiletex_main.cpp */,
 				6DAEE6DD1C83664800167C19 /* tk_textiler.h */,
@@ -135,6 +140,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6D72FC0B1C8AC35700D2C611 /* jr_vectorfont.cpp in Sources */,
 				6DAEE6E21C83664800167C19 /* tk_tiletex_main.cpp in Sources */,
 				6DAEE6E31C83664800167C19 /* tk_textiler.cpp in Sources */,
 			);

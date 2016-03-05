@@ -76,6 +76,8 @@ struct Tile
     uint32_t packX_ = 0;
     uint32_t packY_ = 0;
     
+    char dbgIndexStr[200];
+    
     void paintFromSource( tapnik::Image *srcImage );
     void paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex );
     
@@ -101,7 +103,13 @@ struct Triangle
     
     Tile *tile_=nullptr;
     
+    // packing flags
+    bool packFlip_;
+    bool packRot_; // 0, 1, 2
+    
     bool visited_;
+    
+    int dbgIndex_;
 };
 
 #define TK_NUM_EDGE_COLORS (5)

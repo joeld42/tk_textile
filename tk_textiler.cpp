@@ -15,6 +15,8 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#include "jr_vectorfont.h"
+
 // TODO list --------
 // - blend between tiles
 // - correspondence points in placeEdge
@@ -31,6 +33,7 @@
 #define TK_ABS(x) (((x)<0)?-(x):(x))
 #define TK_LERP(a,b,t) (((1.0-t)*(a)) + (t*(b)))
 
+static VectorFont *g_vectorFont = NULL;
 
 using namespace tapnik;
 
@@ -222,8 +225,7 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-    // DBG
-    return;
+//    printf("drawline %d %d -> %d %d\n", x1, y1, x2, y2 );
     
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
     int32_t dy=y2-y1;      /* the vertical distance of the line */
@@ -321,6 +323,7 @@ void meshProcessTriangle( TK_TriangleVert a, TK_TriangleVert b, TK_TriangleVert 
     t->A_ = a;
     t->B_ = b;
     t->C_ = c;
+    t->dbgIndex_ = mesh->numMeshTris_ - 1;
 }
 
 Mesh *Mesh::load(const char *filename)
@@ -381,18 +384,45 @@ void Mesh::save( const char *filename, int32_t outMapSize )
     // tex coords from tiles
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
         Tile *tile = tri->tile_;
+        
+        // subtracting packrot here because tiles are CCW to triangles??
+        int pr = tri->packRot_;
+        
+        if (pr ==1) pr =2;
+        
+//        printf("packRot %d pr %d\n", tri->packRot_, pr );
+        GLKVector3 tileST[3];
+        if (!tri->packFlip_) {
+            tileST[(pr+0)%3] = GLKVector3Make( tile->tileA_[0], tile->tileA_[1], 0.0);
+            tileST[(pr+1)%3] = GLKVector3Make( tile->tileB_[0], tile->tileB_[1], 0.0);
+            tileST[(pr+2)%3] = GLKVector3Make( tile->tileC_[0], tile->tileC_[1], 0.0);
+            printf ("packRot %d pr %d triA %d triB %d triC %d\n",
+                    tri->packRot_, pr,
+                    (pr+0)%3, (pr+1)%3, (pr+2)%3 );
+        } else {
+            printf("PACK FLIP!\n");
+            tileST[(pr+0)%3] = GLKVector3Make( tile->tileA_[0], tile->tileA_[1], 0.0);
+            tileST[(pr+2)%3] = GLKVector3Make( tile->tileB_[0], tile->tileB_[1], 0.0);
+            tileST[(pr+1)%3] = GLKVector3Make( tile->tileC_[0], tile->tileC_[1], 0.0);
+        }
+        
         float stA[2], stB[2], stC[2];
+        
+//        if (pr!=0) {
+//            tileST[1] = tileST[0];
+//            tileST[2] = tileST[0];
+//        }
 
-        stA[0] = (float)(tile->packX_ + tile->tileA_[0]) / (float)outMapSize;
-        stA[1] = 1.0 - (float)(tile->packY_ + tile->tileA_[1]) / (float)outMapSize;
+        stA[0] = (float)(tile->packX_ + tileST[0].x ) / (float)outMapSize;
+        stA[1] = 1.0 - (float)(tile->packY_ + tileST[0].y ) / (float)outMapSize;
         fprintf( fp, "vt %f %f\n", stA[0], stA[1] );
         
-        stB[0] = (float)(tile->packX_ + tile->tileB_[0]) / (float)outMapSize;
-        stB[1] = 1.0 - (float)(tile->packY_ + tile->tileB_[1]) / (float)outMapSize;
+        stB[0] = (float)(tile->packX_ + tileST[1].x ) / (float)outMapSize;
+        stB[1] = 1.0 - (float)(tile->packY_ + tileST[1].y ) / (float)outMapSize;
         fprintf( fp, "vt %f %f\n", stB[0], stB[1] );
 
-        stC[0] = (float)(tile->packX_ + tile->tileC_[0]) / (float)outMapSize;
-        stC[1] = 1.0 - (float)(tile->packY_ + tile->tileC_[1]) / (float)outMapSize;
+        stC[0] = (float)(tile->packX_ + + tileST[2].x ) / (float)outMapSize;
+        stC[1] = 1.0 - (float)(tile->packY_ + tileST[2].y ) / (float)outMapSize;
         fprintf( fp, "vt %f %f\n\n", stC[0], stC[1] );
     }
 
@@ -707,6 +737,23 @@ void Tile::debugDrawAnnotations()
     img_->drawFatLine(tileA_[0], tileA_[1], tileB_[0], tileB_[1], edge_[0]->debugColor_ );
     img_->drawFatLine(tileB_[0], tileB_[1], tileC_[0], tileC_[1], edge_[1]->debugColor_ );
     img_->drawFatLine(tileC_[0], tileC_[1], tileA_[0], tileA_[1], edge_[2]->debugColor_ );
+    
+    g_vectorFont->pen( 0xffffffff );
+    g_vectorFont->move( tileA_[0]-4, tileA_[1]+8 );
+    g_vectorFont->vprintf( img_, "A" );
+    
+    g_vectorFont->move( tileB_[0]-21, tileB_[1] - 20 );
+    g_vectorFont->vprintf( img_, "B");
+    
+    g_vectorFont->move( tileC_[0]+12, tileC_[1] - 20 );
+    g_vectorFont->vprintf( img_, "C %s", dbgIndexStr );
+
+    g_vectorFont->move( (img_->width_/2) - 20, img_->height_/2 );
+    g_vectorFont->vprintf( img_, "%s%s%s", flipped_[0]?"Y":"N", flipped_[1]?"Y":"N", flipped_[2]?"Y":"N" );
+
+    g_vectorFont->move( (img_->width_/2) - 20, img_->height_/2 + 20);
+    g_vectorFont->vprintf( img_, "FARE" );
+
 }
 
 
@@ -864,9 +911,9 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
     GLKVector3 bb = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileB_[0], tileB_[1], 0.0 ));
     GLKVector3 cc = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileC_[0], tileC_[1], 0.0 ));
     
-    srcImage->drawLine( aa.x, aa.y, bb.x, bb.y );
-    srcImage->drawLine( bb.x, bb.y, cc.x, cc.y );
-    srcImage->drawLine( cc.x, cc.y, aa.x, aa.y );
+//    srcImage->drawLine( aa.x, aa.y, bb.x, bb.y );
+//    srcImage->drawLine( bb.x, bb.y, cc.x, cc.y );
+//    srcImage->drawLine( cc.x, cc.y, aa.x, aa.y );
     
     // Copy the pixels from source into tile
     for (int j=0; j < img_->height_; j++) {
@@ -925,6 +972,12 @@ void TextureTiler::placeEdge( EdgeInfo *edge )
 // Does stuff.
 void TextureTiler::doStuff( const char *outTexFilename )
 {
+    g_vectorFont = createVectorFont();
+
+//    g_vectorFont->pen( 0xffff00ff );
+//    g_vectorFont->move( 100, 100 );
+//    g_vectorFont->vprintf( sourceImage_, "Hello world" );
+    
     // Make edge colors
     EdgeInfo *edges[TK_NUM_EDGE_COLORS];
     edges[0] = new EdgeInfo( 0, 0xffff0000 );
@@ -962,22 +1015,38 @@ void TextureTiler::doStuff( const char *outTexFilename )
 
 Tile *TextureTiler::findOrCreateTile( Triangle *tri )
 {
-    // Note: could be clever here and support rotated tiles, e.g. use tile ABC for
-    // BCA but i'm not sure the number of tiles is an issue, and this will give more
-    // variety in the image anyways so not doing it yet...
     Tile *result = nullptr;
-    for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
-        Tile *tile = tiles_[tileNdx];
-        if ( (tri->ab_ == tile->edge_[0]) && (tri->flipped_[0] == tile->flipped_[0]) &&
-             (tri->bc_ == tile->edge_[1]) && (tri->flipped_[1] == tile->flipped_[1]) &&
-             (tri->ca_ == tile->edge_[2]) && (tri->flipped_[2] == tile->flipped_[2])) {
-            result = tile;
-            break;
+    for (int tileRot = 0; tileRot < 3; tileRot++ )
+    {
+        // DBG
+//        if (tileRot==0) continue;
+        
+        for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
+            Tile *tile = tiles_[tileNdx];
+            if ( (tri->ab_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[0] == tile->flipped_[(tileRot+0)%3]) &&
+                 (tri->bc_ == tile->edge_[(tileRot+1)%3]) && (tri->flipped_[1] == tile->flipped_[(tileRot+1)%3]) &&
+                 (tri->ca_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[2] == tile->flipped_[(tileRot+2)%3])) {
+                result = tile;
+                tri->packFlip_ = false;
+                tri->packRot_ = tileRot;
+                break;
+            }
+            /*
+            if ( (tri->ca_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[0] == tile->flipped_[(tileRot+0)%3]) &&
+                (tri->bc_ == tile->edge_[(tileRot+1)%3]) && (tri->flipped_[1] == !tile->flipped_[(tileRot+1)%3]) &&
+                (tri->ab_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[2] == tile->flipped_[(tileRot+2)%3])) {
+                result = tile;
+                tri->packFlip_ = true;
+                tri->packRot_ = tileRot;
+                break;
+            }*/
         }
     }
     
     // Didn't find one, create a new tile
     if (!result) {
+        tri->packFlip_ =false;
+        
         // Do we need space for more tiles?
         if (numTiles_ == tilesCapacity_) {
             size_t growSize = (tilesCapacity_ * 3) / 2;
@@ -997,6 +1066,8 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
         result->edge_[0] = tri->ab_;
         result->edge_[1] = tri->bc_;
         result->edge_[2] = tri->ca_;
+        
+        sprintf( result->dbgIndexStr, "T%zu: %d", numTiles_, tri->dbgIndex_);
         
         for (int i=0; i < 3; i++) {
             result->flipped_[i] = tri->flipped_[i];
@@ -1036,6 +1107,8 @@ void TextureTiler::gatherTiles()
 void TextureTiler::assembleTiles()
 {
     uint32_t outSz = 128;
+    
+    printf("Packing %zu tiles\n", numTiles_ );
     
     // First we need to figure out how big the output image should be
     bool tilesFit = false;
