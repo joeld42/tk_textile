@@ -61,6 +61,8 @@ struct Tile
 {
     Tile( int32_t edgeSize, int32_t margin );
     
+    int dbgIndex_;
+    
     // Tile triangles in pixel coords
     int32_t tileA_[2], tileB_[2], tileC_[2];
     
@@ -105,7 +107,7 @@ struct Triangle
     
     // packing flags
     bool packFlip_;
-    bool packRot_; // 0, 1, 2
+    int packRot_; // 0, 1, 2
     
     bool visited_;
     
@@ -156,7 +158,7 @@ struct TextureTiler
     char *outTexFilename_ = nullptr;
     tapnik::Image *outTexture_ = nullptr;
     
-    uint32_t edgeSize_ = 160; // size of output triangle edges
+    uint32_t edgeSize_ = 100; // size of output triangle edges
     
     tapnik::Mesh *mesh_;
 

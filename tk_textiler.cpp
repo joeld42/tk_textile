@@ -225,6 +225,7 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
+    return;
 //    printf("drawline %d %d -> %d %d\n", x1, y1, x2, y2 );
     
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
@@ -323,8 +324,9 @@ void meshProcessTriangle( TK_TriangleVert a, TK_TriangleVert b, TK_TriangleVert 
     t->A_ = a;
     t->B_ = b;
     t->C_ = c;
-    t->dbgIndex_ = mesh->numMeshTris_ - 1;
+    t->dbgIndex_ = (int)(mesh->numMeshTris_ - 1);
 }
+
 
 Mesh *Mesh::load(const char *filename)
 {
@@ -359,6 +361,12 @@ Mesh *Mesh::load(const char *filename)
     return result;
 }
 
+void dbgPrintTri( Triangle *tri )
+{
+    printf("Index: %d packFlip %d packRot %d\n", tri->dbgIndex_, tri->packFlip_?1:0, tri->packRot_ );
+    
+}
+
 void Mesh::save( const char *filename, int32_t outMapSize )
 {
     printf("Writing output mesh '%s'\n", filename );
@@ -385,33 +393,38 @@ void Mesh::save( const char *filename, int32_t outMapSize )
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
         Tile *tile = tri->tile_;
         
-        // subtracting packrot here because tiles are CCW to triangles??
-        int pr = tri->packRot_;
-        
-        if (pr ==1) pr =2;
-        
-//        printf("packRot %d pr %d\n", tri->packRot_, pr );
+        int pr = tri->packFlip_?tri->packRot_:(3-tri->packRot_);
         GLKVector3 tileST[3];
         if (!tri->packFlip_) {
             tileST[(pr+0)%3] = GLKVector3Make( tile->tileA_[0], tile->tileA_[1], 0.0);
             tileST[(pr+1)%3] = GLKVector3Make( tile->tileB_[0], tile->tileB_[1], 0.0);
             tileST[(pr+2)%3] = GLKVector3Make( tile->tileC_[0], tile->tileC_[1], 0.0);
-            printf ("packRot %d pr %d triA %d triB %d triC %d\n",
-                    tri->packRot_, pr,
-                    (pr+0)%3, (pr+1)%3, (pr+2)%3 );
+//            printf ("packRot %d pr %d triA %d triB %d triC %d\n",
+//                    tri->packRot_, pr,
+//                    (pr+0)%3, (pr+1)%3, (pr+2)%3 );
         } else {
-            printf("PACK FLIP!\n");
             tileST[(pr+0)%3] = GLKVector3Make( tile->tileA_[0], tile->tileA_[1], 0.0);
-            tileST[(pr+2)%3] = GLKVector3Make( tile->tileB_[0], tile->tileB_[1], 0.0);
             tileST[(pr+1)%3] = GLKVector3Make( tile->tileC_[0], tile->tileC_[1], 0.0);
+            tileST[(pr+2)%3] = GLKVector3Make( tile->tileB_[0], tile->tileB_[1], 0.0);
         }
         
         float stA[2], stB[2], stC[2];
         
-//        if (pr!=0) {
-//            tileST[1] = tileST[0];
-//            tileST[2] = tileST[0];
-//        }
+        //        if ( tile->dbgIndex_ == 33 ) {
+        if (tri->dbgIndex_ == 95) {
+            //            printf("Suspicious tile on triangle %d\n", tri->dbgIndex_);
+            //            tileST[1] = tileST[0];
+            //            tileST[2] = tileST[0];
+            
+            // print out the bad tile
+            printf("-------\n");
+            printf("BAD STs: A %3.2f %3.2f B %3.2f %3.2f C %3.2f %3.2f\n",
+                   tileST[0].x, tileST[0].y,
+                   tileST[1].x, tileST[1].y,
+                   tileST[2].x, tileST[2].y );
+            dbgPrintTri( tri );
+        }
+
 
         stA[0] = (float)(tile->packX_ + tileST[0].x ) / (float)outMapSize;
         stA[1] = 1.0 - (float)(tile->packY_ + tileST[0].y ) / (float)outMapSize;
@@ -424,6 +437,8 @@ void Mesh::save( const char *filename, int32_t outMapSize )
         stC[0] = (float)(tile->packX_ + + tileST[2].x ) / (float)outMapSize;
         stC[1] = 1.0 - (float)(tile->packY_ + tileST[2].y ) / (float)outMapSize;
         fprintf( fp, "vt %f %f\n\n", stC[0], stC[1] );
+        
+        
     }
 
     // And finally triangles
@@ -931,7 +946,7 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
                 
                 // TODO: (maybe) fractional lookup and interpolate
                 uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
-#if 0
+#if 1
                 destImage->drawPixel(i, j, sampleVal );
 #else
                 destImage->drawPixelTinted(i, j, sampleVal, edge->debugColor_, 0.2 );
@@ -1019,10 +1034,11 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
     for (int tileRot = 0; tileRot < 3; tileRot++ )
     {
         // DBG
-//        if (tileRot==0) continue;
+//        if (tileRot!=0) continue;
         
         for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
             Tile *tile = tiles_[tileNdx];
+
             if ( (tri->ab_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[0] == tile->flipped_[(tileRot+0)%3]) &&
                  (tri->bc_ == tile->edge_[(tileRot+1)%3]) && (tri->flipped_[1] == tile->flipped_[(tileRot+1)%3]) &&
                  (tri->ca_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[2] == tile->flipped_[(tileRot+2)%3])) {
@@ -1031,15 +1047,16 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
                 tri->packRot_ = tileRot;
                 break;
             }
-            /*
-            if ( (tri->ca_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[0] == tile->flipped_[(tileRot+0)%3]) &&
+
+            if ( (tri->ca_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[2] == tile->flipped_[(tileRot+0)%3]) &&
                 (tri->bc_ == tile->edge_[(tileRot+1)%3]) && (tri->flipped_[1] == !tile->flipped_[(tileRot+1)%3]) &&
-                (tri->ab_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[2] == tile->flipped_[(tileRot+2)%3])) {
+                (tri->ab_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[0] == tile->flipped_[(tileRot+2)%3])) {
                 result = tile;
                 tri->packFlip_ = true;
                 tri->packRot_ = tileRot;
                 break;
-            }*/
+            }
+
         }
     }
     
@@ -1068,6 +1085,7 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
         result->edge_[2] = tri->ca_;
         
         sprintf( result->dbgIndexStr, "T%zu: %d", numTiles_, tri->dbgIndex_);
+        result->dbgIndex_ = (int)numTiles_;
         
         for (int i=0; i < 3; i++) {
             result->flipped_[i] = tri->flipped_[i];
@@ -1167,7 +1185,7 @@ void TextureTiler::debugDumpTiles()
         Tile *tile = tiles_[tileNdx];
         
         tile->paintFromSource( sourceImage_ );
-        tile->debugDrawAnnotations();
+//        tile->debugDrawAnnotations();
         
         tile->img_->save();
     }
