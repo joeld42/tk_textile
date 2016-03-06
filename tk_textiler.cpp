@@ -72,6 +72,10 @@ static inline float smoothstep(float edge0, float edge1, float x)
     return x*x*(3 - 2*x);
 }
 
+static inline uint32_t min_u32( uint32_t a, uint32_t b ) {
+    if (a < b) return a;
+    else return b;
+}
 
 float randUniform()
 {
@@ -306,7 +310,7 @@ void Image::drawImage( int32_t x, int32_t y, tapnik::Image *img )
 void Image::save()
 {
     if (stbi_write_png(filename_, width_, height_, 4, imgdata_, width_*4 )) {
-        printf("Wrote output image: %s\n", filename_ );
+//        printf("Wrote output image: %s\n", filename_ );
     } else {
         printf("Error writing output image: %s\n", filename_);
     }
@@ -731,7 +735,12 @@ void Mesh::assignEdges( EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
 // ==================================================
 # pragma mark - Tile
 // ==================================================
-Tile::Tile( int32_t edgeSize, int32_t margin ) {
+Tile::Tile()
+{
+    img_ = nullptr;
+}
+
+void Tile::makeImage( int32_t edgeSize, int32_t margin ) {
     
     img_ = new tapnik::Image( edgeSize + (margin*2), (uint32_t)((float)edgeSize * TK_SQRT3_OVER_2) + (margin*2) );
 
@@ -915,7 +924,7 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
     float angle = angDest - angSrc;
     
     // scale should be ~= 1.0 since we generated the target line the same size
-    printf("lengthA %f lengthDest %f Scale is %f\n", lengthAB, lengthDestAB, scale );
+//    printf("lengthA %f lengthDest %f Scale is %f\n", lengthAB, lengthDestAB, scale );
     
     GLKMatrix4 m3 = GLKMatrix4MakeTranslation( a.x, a.y, a.z );
     GLKMatrix4 m2 = GLKMatrix4MakeRotation( angle, 0.0, 0.0, 1.0 );
@@ -1010,6 +1019,82 @@ void TextureTiler::doStuff( const char *outTexFilename )
     edges[2] = new EdgeInfo( 2, 0xff0000ff );
     edges[3] = new EdgeInfo( 3, 0xff008efc );
     edges[4] = new EdgeInfo( 4, 0xff7f007f );
+
+    // build mesh
+    mesh_->buildAdjacency();
+    mesh_->assignEdges( edges );
+    
+    // make tiles
+    gatherTiles();
+
+    // calc edgeSize
+    int bestSize = -1;
+    int bestCols = 0;
+    float bestDiff = 0;
+    for (int rowCount=1; rowCount <= numTiles_; rowCount++) {
+        
+        // See what the edge size would be for this rowCount
+        // TODO: flip alternate triangles for tighter pack
+        float szX = 0;
+        float rowX = 0;
+        float szY = 0;
+        int r = 0;
+        int numCols = 1;
+        for (int i=0; i < numTiles_; i++) {
+            rowX += 1;
+            r++;
+            if (r==rowCount) {
+                r = 0;
+                numCols++;
+                rowX = 0;
+                szY += TK_SQRT3_OVER_2;
+            }
+            if (rowX > szX) szX = rowX;
+        }
+        float diff = fabs(szX - szY);
+        if ((bestSize<0)||(diff<bestDiff)) {
+            printf("At rowcount %d sz is %f x %f\n", rowCount, szX, szY );
+            printf("rowCount %d Diff %f bestDiff %f\n", rowCount, diff, bestDiff );
+            bestDiff = diff;
+            bestSize = rowCount;
+            bestCols = numCols;
+        }
+    }
+    
+    int edgeSize1 = (int)((outputSize_ - 8.0) / (float)bestSize) - 4.0; // required size from width
+    int edgeSize2 = (int)( floorf( (outputSize_-8.0) / (float)bestCols) * (1.0/TK_SQRT3_OVER_2)) - 8.0; // required size from height
+
+    float res1 = edgeSize1 * bestSize;
+    float res2 = (edgeSize2*TK_SQRT3_OVER_2) * bestCols;
+    printf("res1: %f\n", res1);
+    printf("res2: %f\n", res2);
+    
+    edgeSize_ = min_u32( edgeSize1, edgeSize2 );
+    printf("edgeSize1 %d edgeSize2 %d\n", edgeSize1, edgeSize2 );
+    printf("Best Row Size: %d bestColSize: %d, edgeSize %d\n", bestSize, bestCols, edgeSize_);
+    
+    // Generate images
+    for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
+        Tile *tile = tiles_[tileNdx];
+        
+        tile->makeImage( edgeSize_, 4 );
+        
+        char buff[100];
+        sprintf( buff, "dbgtiles/tile_%c%c%c%c%c%c.png",
+                tile->flipped_[0]?'n':'f', tile->edge_[0]->edgeCode_ + 'A',
+                tile->flipped_[1]?'n':'f', tile->edge_[1]->edgeCode_ + 'A',
+                tile->flipped_[2]?'n':'f', tile->edge_[2]->edgeCode_ + 'A' );
+        
+        tile->img_->filename_ = strdup(buff);
+    }
+    
+    // DBG
+//    assembleTiles(bestSize, 4 );
+//    exit(1);
+
+    
+    // FIXME: delete images
+
     
     // initial placement of edges in source
     for (int i=0; i < TK_NUM_EDGE_COLORS; i++) {
@@ -1020,16 +1105,11 @@ void TextureTiler::doStuff( const char *outTexFilename )
                                   edges[i]->debugColor_ );
     }
     
-    // build mesh
-    mesh_->buildAdjacency();
-    mesh_->assignEdges( edges );
     
-    // make tiles
-    gatherTiles();
-    
+    // paint tiles
     debugDumpTiles();
     
-    assembleTiles();
+    assembleTiles( bestSize, 4 );
 
     // TODO: make filename and stuff settable
     // NOTE: this assumes outTex is square
@@ -1091,7 +1171,7 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
             printf("Grow tiles, size %zu capacity %zu\n", numTiles_, tilesCapacity_ );
         }
         
-        result = new Tile( edgeSize_, 4 );
+        result = new Tile();
         result->edge_[0] = tri->ab_;
         result->edge_[1] = tri->bc_;
         result->edge_[2] = tri->ca_;
@@ -1117,70 +1197,38 @@ void TextureTiler::gatherTiles()
         
         tri->tile_ = findOrCreateTile( tri );
     }
-    
-    printf("Gather Tiles: %zu unique tiles\n", numTiles_ );
-    for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
-        Tile *tile = tiles_[tileNdx];
-        
-        char buff[100];
-        sprintf( buff, "dbgtiles/tile_%c%c%c%c%c%c.png",
-                tile->flipped_[0]?'n':'f', tile->edge_[0]->edgeCode_ + 'A',
-                tile->flipped_[1]?'n':'f', tile->edge_[1]->edgeCode_ + 'A',
-                tile->flipped_[2]?'n':'f', tile->edge_[2]->edgeCode_ + 'A' );
-        
-        tile->img_->filename_ = strdup(buff);
-    }
-    
-    // FIXME: delete images
 }
 
-void TextureTiler::assembleTiles()
+void TextureTiler::assembleTiles( int rowCount, int margin )
 {
-    uint32_t outSz = 128;
-    
-    printf("Packing %zu tiles\n", numTiles_ );
-    
-    // First we need to figure out how big the output image should be
-    bool tilesFit = false;
-
-    // Try to pack them into a square image this size
-    while (!tilesFit)
-    {
-        tilesFit = true;
+    int marg = 4;
+    uint32_t packX=marg;
+    uint32_t packY=marg;
+    uint32_t rowY = 0;
+    int r = 0;
+    for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
+        Tile *tile = tiles_[tileNdx];
+        r++;
+        if ( r > rowCount ) {
+            // advance to next row
+            packX = marg;
+            packY += rowY;
+            rowY = 0;
+            r=1;
+        }
+        tile->packX_ = packX;
+        tile->packY_ = packY;
         
-        printf("Packing size %dx%d\n", outSz, outSz );
-        uint32_t packX=0, packY=0;
-        uint32_t rowY = 0;
-        for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
-            Tile *tile = tiles_[tileNdx];
-            if ( (packX + tile->img_->width_) >= outSz ) {
-                // advance to next row
-                packX = 0;
-                packY += rowY;
-                rowY = 0;
-            }
-            
-            tile->packX_ = packX;
-            tile->packY_ = packY;
-            
-            packX += tile->img_->width_;
-            if (tile->img_->height_ > rowY) {
-                rowY = tile->img_->height_;
-            }
-            
-            if (packY + rowY > outSz) {
-                // doesn't fit, start over
-                tilesFit = false;
-                outSz *= 2;
-                break;
-            }
+        packX += tile->img_->width_;
+        if (tile->img_->height_ > rowY) {
+            rowY = tile->img_->height_;
         }
     }
     
     // now make the output image and do the pack
     // Make an output texture
-    printf("Output size: %d %d\n", outSz, outSz );
-    outTexture_ = new tapnik::Image( outSz, outSz );
+    printf("Output size: %d %d\n", outputSize_, outputSize_);
+    outTexture_ = new tapnik::Image( outputSize_, outputSize_ );
     outTexture_->clear( 0xff7f7f7f );
     outTexture_->filename_ = strdup(outTexFilename_);
 

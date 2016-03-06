@@ -59,7 +59,9 @@ struct EdgeInfo
 // hmm, maybe tile should be 2 triangles that share an edge?
 struct Tile
 {
-    Tile( int32_t edgeSize, int32_t margin );
+    Tile();
+
+    void makeImage( int32_t edgeSize, int32_t margin );
     
     int dbgIndex_;
     
@@ -144,7 +146,7 @@ struct TextureTiler
     
     void assignEdges();
     void gatherTiles();
-    void assembleTiles(); 
+    void assembleTiles( int rowCount, int margin );
     void finish();
     
     void debugDumpTiles();
@@ -158,6 +160,7 @@ struct TextureTiler
     char *outTexFilename_ = nullptr;
     tapnik::Image *outTexture_ = nullptr;
     
+    uint32_t outputSize_ = 2048;
     uint32_t edgeSize_ = 95; // size of output triangle edges
     
     tapnik::Mesh *mesh_;
