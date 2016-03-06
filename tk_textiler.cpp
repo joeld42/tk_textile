@@ -797,10 +797,14 @@ void Tile::paintFromSource(Image *srcImage)
             GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
             GLKVector3 b = barycentric(ta, tb, tc, p );
             
-            if ((b.x >=0.0) && (b.x <=1.0) &&
-                (b.y >=0.0) && (b.y <=1.0) &&
-                (b.z >=0.0) && (b.z <=1.0) )
+            float ov = 0.1;
+            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
+                (b.y >=-ov) && (b.y <=1.0+ov) &&
+                (b.z >=-ov) && (b.z <=1.0+ov) )
             {
+                b.x = saturate(b.x);
+                b.y = saturate(b.y);
+                b.z = saturate(b.z);
                 float aa = smoothstep( 0.0, b.x, b.z );
                 float bb = smoothstep( 0.0, b.x, b.y );
                 float blendVal = pow(aa*bb, blendSharpness);
@@ -827,10 +831,15 @@ void Tile::paintFromSource(Image *srcImage)
             GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
             GLKVector3 b = barycentric(ta, tb, tc, p );
             
-            if ((b.x >=0.0) && (b.x <=1.0) &&
-                (b.y >=0.0) && (b.y <=1.0) &&
-                (b.z >=0.0) && (b.z <=1.0) )
+            float ov = 0.1;
+            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
+                (b.y >=-ov) && (b.y <=1.0+ov) &&
+                (b.z >=-ov) && (b.z <=1.0+ov) )
             {
+                b.x = saturate(b.x);
+                b.y = saturate(b.y);
+                b.z = saturate(b.z);
+
                 float aa = smoothstep( 0.0, b.y, b.z );
                 float bb = smoothstep( 0.0, b.y, b.x );
                 float blendVal = pow(aa*bb, blendSharpness);
@@ -922,9 +931,9 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
     GLKVector3 ta = GLKVector3Make( tileA_[0], tileA_[1], 0.0 );
     GLKVector3 tb = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
     GLKVector3 tc = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
-    GLKVector3 aa = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileA_[0], tileA_[1], 0.0 ));
-    GLKVector3 bb = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileB_[0], tileB_[1], 0.0 ));
-    GLKVector3 cc = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileC_[0], tileC_[1], 0.0 ));
+//    GLKVector3 aa = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileA_[0], tileA_[1], 0.0 ));
+//    GLKVector3 bb = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileB_[0], tileB_[1], 0.0 ));
+//    GLKVector3 cc = GLKMatrix4MultiplyVector3WithTranslation( xform_, GLKVector3Make( tileC_[0], tileC_[1], 0.0 ));
     
 //    srcImage->drawLine( aa.x, aa.y, bb.x, bb.y );
 //    srcImage->drawLine( bb.x, bb.y, cc.x, cc.y );
@@ -937,9 +946,10 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
             GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
             GLKVector3 b = barycentric(ta, tb, tc, p );
             
-            if ((b.x >=0.0) && (b.x <=1.0) &&
-                (b.y >=0.0) && (b.y <=1.0) &&
-                (b.z >=0.0) && (b.z <=1.0) )
+            float ov = 0.1;
+            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
+                (b.y >=-ov) && (b.y <=1.0+ov) &&
+                (b.z >=-ov) && (b.z <=1.0+ov) )
             {
                 GLKVector4 samplePos = GLKVector4Make( (float)i, (float)j, 0.0, 1.0 );
                 samplePos = GLKMatrix4MultiplyVector4( xform_, samplePos);
@@ -1048,9 +1058,11 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
                 break;
             }
 
-            if ( (tri->ca_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[2] == tile->flipped_[(tileRot+0)%3]) &&
+            // Confusing: because packFlip reverses triangle direction, we want to match the same flip flags
+            // to get the opposite
+            if ( (tri->ca_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[2] == !tile->flipped_[(tileRot+0)%3]) &&
                 (tri->bc_ == tile->edge_[(tileRot+1)%3]) && (tri->flipped_[1] == !tile->flipped_[(tileRot+1)%3]) &&
-                (tri->ab_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[0] == tile->flipped_[(tileRot+2)%3])) {
+                (tri->ab_ == tile->edge_[(tileRot+2)%3]) && (tri->flipped_[0] == !tile->flipped_[(tileRot+2)%3])) {
                 result = tile;
                 tri->packFlip_ = true;
                 tri->packRot_ = tileRot;
@@ -1185,7 +1197,7 @@ void TextureTiler::debugDumpTiles()
         Tile *tile = tiles_[tileNdx];
         
         tile->paintFromSource( sourceImage_ );
-//        tile->debugDrawAnnotations();
+        tile->debugDrawAnnotations();
         
         tile->img_->save();
     }

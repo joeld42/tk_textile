@@ -158,7 +158,7 @@ struct TextureTiler
     char *outTexFilename_ = nullptr;
     tapnik::Image *outTexture_ = nullptr;
     
-    uint32_t edgeSize_ = 100; // size of output triangle edges
+    uint32_t edgeSize_ = 95; // size of output triangle edges
     
     tapnik::Mesh *mesh_;
 
