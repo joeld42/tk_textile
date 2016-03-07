@@ -18,7 +18,6 @@
 #include "jr_vectorfont.h"
 
 // TODO list --------
-// - blend between tiles
 // - correspondence points in placeEdge
 // - graphcut between tiles
 // - handle open meshes
@@ -229,7 +228,7 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-    return;
+//    return;
 //    printf("drawline %d %d -> %d %d\n", x1, y1, x2, y2 );
     
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
@@ -519,9 +518,9 @@ void Mesh::buildAdjacency()
     printf("build adjacency done...\n");
 }
 
-// should be factorial of TK_NUM_EDGE_COLORS + 1 (the extra is just padding for a copy)
+// should be factorial of TK_MAX_EDGE_COLORS + 1 (the extra is just padding for a copy)
 #define TK_NUM_EDGE_PERMS (121)
-static int edgePerms[TK_NUM_EDGE_PERMS][TK_NUM_EDGE_COLORS];
+static int edgePerms[TK_NUM_EDGE_PERMS][TK_MAX_EDGE_COLORS];
 static int nEdgePerms = 0;
 
 static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge, bool flipped )
@@ -540,14 +539,14 @@ static void assignBackEdge( Triangle *tri, Triangle *nbr, EdgeInfo *edge, bool f
     }
 }
 
-static inline bool checkNeighbor( Triangle *tri ) {
-    int count[TK_NUM_EDGE_COLORS] = {0};
+static inline bool checkNeighbor( Triangle *tri, int numEdgeColors ) {
+    int count[TK_MAX_EDGE_COLORS] = {0};
     
     if (tri->ab_) count[tri->ab_->edgeCode_]++;
     if (tri->bc_) count[tri->bc_->edgeCode_]++;
     if (tri->ca_) count[tri->ca_->edgeCode_]++;
     
-    for (int i=0; i < TK_NUM_EDGE_COLORS; i++) {
+    for (int i=0; i < numEdgeColors; i++) {
         if (count[i] > 1) {
 //            printf("Edge %d used %d times...\n", i, count[i]);
             return false;
@@ -556,15 +555,15 @@ static inline bool checkNeighbor( Triangle *tri ) {
     return true;
 }
 
-void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
+void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_MAX_EDGE_COLORS], int numEdgeColors )
 {
     // Pick a random order to assign in
     int p = (int)randUniform(0, TK_NUM_EDGE_PERMS-1);
     
-    for (int xx = 0; xx < TK_NUM_EDGE_COLORS; xx++) {
-        for (int yy = 0; yy < TK_NUM_EDGE_COLORS; yy++) {
+    for (int xx = 0; xx < numEdgeColors; xx++) {
+        for (int yy = 0; yy < numEdgeColors; yy++) {
             if (yy==xx) continue;
-            for (int zz = 0; zz < TK_NUM_EDGE_COLORS; zz++) {
+            for (int zz = 0; zz < numEdgeColors; zz++) {
                 if ((zz==xx) || (zz==yy)) continue;
                 
                 // get permuted edge colors
@@ -591,7 +590,7 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                     tri->ab_ = edges[x];
                     assignBackEdge( tri, tri->nbAB_, tri->ab_, !tri->flipped_[0] );
                     
-                    if (!checkNeighbor(tri->nbAB_)) badAssign = true;
+                    if (!checkNeighbor(tri->nbAB_, numEdgeColors)) badAssign = true;
                     
                 }
                 if ((!tri->bc_) && (!badAssign)) {
@@ -599,14 +598,14 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                     tri->bc_ = edges[y];
                     assignBackEdge( tri, tri->nbBC_, tri->bc_, !tri->flipped_[1] );
                     
-                    if (!checkNeighbor(tri->nbBC_)) badAssign = true;
+                    if (!checkNeighbor(tri->nbBC_, numEdgeColors)) badAssign = true;
                 }
                 if ((!tri->ca_) && (!badAssign)) {
                     assignedCA = true;
                     tri->ca_ = edges[z];
                     assignBackEdge( tri, tri->nbCA_, tri->ca_, !tri->flipped_[2] );
                     
-                    if (!checkNeighbor(tri->nbCA_)) badAssign = true;
+                    if (!checkNeighbor(tri->nbCA_, numEdgeColors)) badAssign = true;
                 }
                 
                 if (!badAssign)
@@ -631,13 +630,13 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
                     // Did we find a solution?
                     if (solvedTris_ == numMeshTris_) return;
                     
-                    if (!tri->nbAB_->visited_) doAssign( tri->nbAB_, edges );
+                    if (!tri->nbAB_->visited_) doAssign( tri->nbAB_, edges, numEdgeColors );
                     if (solvedTris_ == numMeshTris_) return;
                     
-                    if (!tri->nbBC_->visited_) doAssign( tri->nbBC_, edges );
+                    if (!tri->nbBC_->visited_) doAssign( tri->nbBC_, edges, numEdgeColors );
                     if (solvedTris_ == numMeshTris_) return;
                     
-                    if (!tri->nbCA_->visited_) doAssign( tri->nbCA_, edges );
+                    if (!tri->nbCA_->visited_) doAssign( tri->nbCA_, edges, numEdgeColors );
                     if (solvedTris_ == numMeshTris_) return;
                     
                     // Couldn't find a solution, back out and try some more
@@ -666,9 +665,9 @@ void Mesh::doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
 }
 
 
-void makePermTable( int ndx, bool *used )
+void makePermTable( int ndx, bool *used, int numEdgeColors )
 {
-    if (ndx==TK_NUM_EDGE_COLORS) {
+    if (ndx==numEdgeColors) {
         // found a permutation, yay
 //        printf("PERM %d: ", nEdgePerms );
         for (int i = 0; i < ndx; i++) {
@@ -678,35 +677,36 @@ void makePermTable( int ndx, bool *used )
 //        printf("\n");
         nEdgePerms++;
     } else {
-        for (int i = 0; i < TK_NUM_EDGE_COLORS; i++) {
+        for (int i = 0; i < numEdgeColors; i++) {
             if (!used[i]) {
                 used[i] = true;
                 edgePerms[nEdgePerms][ndx] = i;
-                makePermTable( ndx+1, used );
+                makePermTable( ndx+1, used, numEdgeColors );
                 used[i] = false;
             }
         }
     }
 }
 
-void Mesh::assignEdges( EdgeInfo *edges[TK_NUM_EDGE_COLORS] )
+void Mesh::assignEdges( EdgeInfo *edges[TK_MAX_EDGE_COLORS], int numEdgeColors )
 {
     printf("Assign edges\n");
 
     // generate permutation table
     nEdgePerms = 0;
-    bool used[TK_NUM_EDGE_COLORS] = {0};
-    makePermTable( 0, used );
+    bool used[TK_MAX_EDGE_COLORS] = {0};
+    makePermTable( 0, used, numEdgeColors );
 
     for (Triangle *tri = meshTris_; (tri - meshTris_) < numMeshTris_; tri++) {
         tri->visited_ = false;
     }
     
     solvedTris_ = 0;
-    doAssign( meshTris_, edges );
+    doAssign( meshTris_, edges, numEdgeColors );
     
     if (solvedTris_ == numMeshTris_) {
         printf("Yay found a solution...\n");
+        
     } else {
         printf("No edge coloring found. :(\n");
     }
@@ -772,14 +772,50 @@ void Tile::debugDrawAnnotations()
     g_vectorFont->move( tileC_[0]+12, tileC_[1] - 20 );
     g_vectorFont->vprintf( img_, "C %s", dbgIndexStr );
 
-    g_vectorFont->move( (img_->width_/2) - 20, img_->height_/2 );
-    g_vectorFont->vprintf( img_, "%s%s%s", flipped_[0]?"Y":"N", flipped_[1]?"Y":"N", flipped_[2]?"Y":"N" );
-
-    g_vectorFont->move( (img_->width_/2) - 20, img_->height_/2 + 20);
-    g_vectorFont->vprintf( img_, "FARE" );
+//    g_vectorFont->move( (img_->width_/2) - 20, img_->height_/2 );
+//    g_vectorFont->vprintf( img_, "%s%s%s", flipped_[0]?"Y":"N", flipped_[1]?"Y":"N", flipped_[2]?"Y":"N" );
+//
+//    g_vectorFont->move( (img_->width_/2) - 20, img_->height_/2 + 20);
+//    g_vectorFont->vprintf( img_, "FARE" );
 
 }
 
+void combineBlend( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
+                  Image *img, Image *overImg, bool leftCorner )
+{
+    float blendSharpness = 0.9; // higher value = more sharper edge
+    // blend
+    for (int j=0; j < img->height_; j++) {
+        for (int i=0; i < img->width_; i++) {
+            
+            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
+            GLKVector3 b = barycentric(ta, tb, tc, p );
+            
+            float ov = 0.1;
+            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
+                (b.y >=-ov) && (b.y <=1.0+ov) &&
+                (b.z >=-ov) && (b.z <=1.0+ov) )
+            {
+                b.x = saturate(b.x);
+                b.y = saturate(b.y);
+                b.z = saturate(b.z);
+                float aa = smoothstep( 0.0, leftCorner?b.x:b.y, b.z );
+                float bb = smoothstep( 0.0, leftCorner?b.x:b.y, leftCorner?b.y:b.x );
+                float blendVal = pow(aa*bb, blendSharpness);
+                
+                GLKVector4 baseColorf = floatColor( img->getPixel(i,j) );
+                GLKVector4 tileColorf = floatColor( overImg->getPixel(i, j));
+                GLKVector4 blendColorf = lerpVec4( baseColorf, tileColorf, blendVal );
+                blendColorf.a = 1.0; // fixme
+                uint32_t blendColor = pixelColor(blendColorf );
+                
+                img->drawPixel(i, j, blendColor );
+            }
+            
+        }
+    }
+    
+}
 
 void Tile::paintFromSource(Image *srcImage)
 {
@@ -798,76 +834,15 @@ void Tile::paintFromSource(Image *srcImage)
     GLKVector3 tb = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
     GLKVector3 tc = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
 
-    float blendSharpness = 0.9; // higher value = more sharper edge
-    // blend
-    for (int j=0; j < img_->height_; j++) {
-        for (int i=0; i < img_->width_; i++) {
-
-            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
-            GLKVector3 b = barycentric(ta, tb, tc, p );
-            
-            float ov = 0.1;
-            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
-                (b.y >=-ov) && (b.y <=1.0+ov) &&
-                (b.z >=-ov) && (b.z <=1.0+ov) )
-            {
-                b.x = saturate(b.x);
-                b.y = saturate(b.y);
-                b.z = saturate(b.z);
-                float aa = smoothstep( 0.0, b.x, b.z );
-                float bb = smoothstep( 0.0, b.x, b.y );
-                float blendVal = pow(aa*bb, blendSharpness);
-                
-                GLKVector4 baseColorf = floatColor( img_->getPixel(i,j) );
-                GLKVector4 tileColorf = floatColor( tmpImg->getPixel(i, j));
-                GLKVector4 blendColorf = lerpVec4( baseColorf, tileColorf, blendVal );
-                blendColorf.a = 1.0; // fixme
-                uint32_t blendColor = pixelColor(blendColorf );
-                
-                img_->drawPixel(i, j, blendColor );
-            }
-
-        }
-    }
+    combineBlend(ta, tb, tc, img_, tmpImg, true );
+    
 
     // Paint the last edge onto a temp image
     paintFromSourceEdge( tmpImg, srcImage, 2 );
-    
-    // blend
-    for (int j=0; j < img_->height_; j++) {
-        for (int i=0; i < img_->width_; i++) {
-            
-            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
-            GLKVector3 b = barycentric(ta, tb, tc, p );
-            
-            float ov = 0.1;
-            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
-                (b.y >=-ov) && (b.y <=1.0+ov) &&
-                (b.z >=-ov) && (b.z <=1.0+ov) )
-            {
-                b.x = saturate(b.x);
-                b.y = saturate(b.y);
-                b.z = saturate(b.z);
 
-                float aa = smoothstep( 0.0, b.y, b.z );
-                float bb = smoothstep( 0.0, b.y, b.x );
-                float blendVal = pow(aa*bb, blendSharpness);
-                
-                GLKVector4 baseColorf = floatColor( img_->getPixel(i,j) );
-                GLKVector4 tileColorf = floatColor( tmpImg->getPixel(i, j));
-                GLKVector4 blendColorf = lerpVec4( baseColorf, tileColorf, blendVal );
-                blendColorf.a = 1.0; // fixme
-                uint32_t blendColor = pixelColor(blendColorf );
-                
-                img_->drawPixel(i, j, blendColor );
-            }
-            
-        }
-    }
+    combineBlend(ta, tb, tc, img_, tmpImg, false );
     
     delete tmpImg;
-
-    
 }
 
 void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex )
@@ -965,10 +940,10 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
                 
                 // TODO: (maybe) fractional lookup and interpolate
                 uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
-#if 1
+#if 0
                 destImage->drawPixel(i, j, sampleVal );
 #else
-                destImage->drawPixelTinted(i, j, sampleVal, edge->debugColor_, 0.2 );
+                destImage->drawPixelTinted(i, j, sampleVal, edge->debugColor_, 0.5 );
 #endif
             }
         }
@@ -1013,7 +988,7 @@ void TextureTiler::doStuff( const char *outTexFilename )
 //    g_vectorFont->vprintf( sourceImage_, "Hello world" );
     
     // Make edge colors
-    EdgeInfo *edges[TK_NUM_EDGE_COLORS];
+    EdgeInfo *edges[TK_MAX_EDGE_COLORS];
     edges[0] = new EdgeInfo( 0, 0xffff0000 );
     edges[1] = new EdgeInfo( 1, 0xff00ff00 );
     edges[2] = new EdgeInfo( 2, 0xff0000ff );
@@ -1022,7 +997,15 @@ void TextureTiler::doStuff( const char *outTexFilename )
 
     // build mesh
     mesh_->buildAdjacency();
-    mesh_->assignEdges( edges );
+    mesh_->assignEdges( edges, numEdgeColors_ );
+    
+//    // Save result
+//    FILE *fp = fopen("assign.txt", "wt");
+//    for (int i=0; i < numTiles_; i++) {
+//        
+//        fprintf(fp, "%d: %d %d %d %s%s%s\n",
+//                i,
+//    }
     
     // make tiles
     gatherTiles();
@@ -1097,7 +1080,7 @@ void TextureTiler::doStuff( const char *outTexFilename )
 
     
     // initial placement of edges in source
-    for (int i=0; i < TK_NUM_EDGE_COLORS; i++) {
+    for (int i=0; i < numEdgeColors_; i++) {
         placeEdge( edges[i] );
         
         sourceImage_->drawFatLine( edges[i]->srcPointA_.x, edges[i]->srcPointA_.y,

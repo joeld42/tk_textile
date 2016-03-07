@@ -116,7 +116,7 @@ struct Triangle
     int dbgIndex_;
 };
 
-#define TK_NUM_EDGE_COLORS (5)
+#define TK_MAX_EDGE_COLORS (5)
     
 struct Mesh
 {
@@ -126,10 +126,10 @@ struct Mesh
     Triangle *meshTris_;
 
     void buildAdjacency();
-    void assignEdges( EdgeInfo *edges[TK_NUM_EDGE_COLORS] );
+    void assignEdges( EdgeInfo *edges[TK_MAX_EDGE_COLORS], int numEdgeColors );
 
     size_t solvedTris_;
-    void doAssign( Triangle *tri, EdgeInfo *edges[TK_NUM_EDGE_COLORS] );
+    void doAssign( Triangle *tri, EdgeInfo *edges[TK_MAX_EDGE_COLORS], int numEdgeColors );
     
     static Mesh *load( const char *filename );
     void save( const char *filename, int32_t outSz );
@@ -160,7 +160,8 @@ struct TextureTiler
     char *outTexFilename_ = nullptr;
     tapnik::Image *outTexture_ = nullptr;
     
-    uint32_t outputSize_ = 2048;
+    uint32_t numEdgeColors_ = 5;
+    uint32_t outputSize_ = 1024;
     uint32_t edgeSize_ = 95; // size of output triangle edges
     
     tapnik::Mesh *mesh_;
