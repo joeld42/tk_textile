@@ -41,6 +41,7 @@ struct Image
     static Image *load( const char *filename );
 
     void save(); // save to filename_
+    void saveAs( const char *filename );
 };
 
 struct EdgeInfo
@@ -54,7 +55,13 @@ struct EdgeInfo
     // Where this edge lands on src image    
     GLKVector3 srcPointA_, srcPointB_;
 };
+
+enum BlendMode {
+    BlendMode_BLEND,
+    BlendMode_GRAPHCUT
+};
     
+
     
 // hmm, maybe tile should be 2 triangles that share an edge?
 struct Tile
@@ -82,7 +89,7 @@ struct Tile
     
     char dbgIndexStr[200];
     
-    void paintFromSource( tapnik::Image *srcImage );
+    void paintFromSource( tapnik::Image *srcImage, BlendMode blendMode );
     void paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex );
     
     void debugDrawAnnotations();
@@ -137,7 +144,6 @@ struct Mesh
     ~Mesh();
 };
   
-    
 struct TextureTiler
 {
     ~TextureTiler();
@@ -160,6 +166,7 @@ struct TextureTiler
     char *outTexFilename_ = nullptr;
     tapnik::Image *outTexture_ = nullptr;
     
+    BlendMode blendMode_ = BlendMode_GRAPHCUT;
     uint32_t numEdgeColors_ = 5;
     uint32_t outputSize_ = 1024;
     uint32_t edgeSize_ = 95; // size of output triangle edges

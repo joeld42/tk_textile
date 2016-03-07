@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
 
 #include "tk_textiler.h"
 #include "stb_image.h"
@@ -126,6 +127,16 @@ static inline uint32_t pixelColor( GLKVector4 floatColor )
            ((int)(floatColor.b*0xff) << 16) |
            ((int)(floatColor.g*0xff) << 8) |
             (int)(floatColor.r*0xff);
+}
+
+static inline float pixelError( uint32_t cA, uint32_t cB )
+{
+    GLKVector4 a = floatColor( cA );
+    GLKVector4 b = floatColor( cB );
+    
+    // TODO: try Yuv or something to get more perceptual errors
+    float err = fabs(a.x - b.x) + fabs(a.y - b.y) + fabs(a.z - b.z );
+    return err*err;
 }
 
 void *readEntireFile( const char *filename, size_t *out_filesz )
@@ -268,6 +279,49 @@ void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t c
     }
 }
 
+void foreach_line( int32_t x1, int32_t y1, int32_t x2, int32_t y2, void *userdata, void (*func)(void*,int,int) )
+{
+    //    return;
+    //    printf("drawline %d %d -> %d %d\n", x1, y1, x2, y2 );
+    
+    int32_t dx=x2-x1;      /* the horizontal distance of the line */
+    int32_t dy=y2-y1;      /* the vertical distance of the line */
+    int32_t dxabs=TK_ABS(dx);
+    int32_t dyabs=TK_ABS(dy);
+    int32_t sdx=TK_SGN(dx);
+    int32_t sdy=TK_SGN(dy);
+    int32_t x=dyabs>>1;
+    int32_t y=dxabs>>1;
+    int32_t px=x1;
+    int32_t py=y1;
+    
+    func(userdata, px,py);
+    
+    if (dxabs>=dyabs) { /* the line is more horizontal than vertical */
+        for(int i=0;i<dxabs;i++) {
+            y+=dyabs;
+            if (y>=dxabs) {
+                y-=dxabs;
+                py+=sdy;
+            }
+            px+=sdx;
+            func(userdata,px,py);
+        }
+    } else { /* the line is more vertical than horizontal */
+        for(int i=0;i<dyabs;i++) {
+            x+=dxabs;
+            if (x>=dyabs)
+            {
+                x-=dyabs;
+                px+=sdx;
+            }
+            py+=sdy;
+            func(userdata, px,py);
+        }
+    }
+}
+
+
 void Image::drawFatLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
     for (int i=-2; i <= 2; i++) {
@@ -308,7 +362,12 @@ void Image::drawImage( int32_t x, int32_t y, tapnik::Image *img )
 
 void Image::save()
 {
-    if (stbi_write_png(filename_, width_, height_, 4, imgdata_, width_*4 )) {
+    saveAs( filename_ );
+}
+
+void Image::saveAs( const char *filename )
+{
+    if (stbi_write_png(filename , width_, height_, 4, imgdata_, width_*4 )) {
 //        printf("Wrote output image: %s\n", filename_ );
     } else {
         printf("Error writing output image: %s\n", filename_);
@@ -814,10 +873,293 @@ void combineBlend( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
             
         }
     }
-    
 }
 
-void Tile::paintFromSource(Image *srcImage)
+enum {
+    CutFlag_MASKED  = 0x01,
+    CutFlag_TARGET  = 0x02,
+    CutFlag_VISITED = 0x04,
+    CutFlag_MARKED  = 0x08,
+};
+
+
+
+struct ImgPos {
+    int x;
+    int y;
+};
+
+ImgPos ImgPosMake( int px, int py )
+{
+    ImgPos result;
+    result.x = px;
+    result.y = py;
+    return result;
+}
+
+#define MAX_GC_QUEUE 10000
+
+struct GraphCutInfo {
+    Image *cutDbgImage_;
+    Image *img_;
+    ImgPos startPos_;
+    float endError_;
+    ImgPos endPos_;
+    uint8_t *mask_;
+    float *errorVal_;
+    ImgPos *queue_;
+    uint32_t queueSize_;
+    
+    uint32_t queueHead_;
+    uint32_t queueTail_;
+    
+    float maxError_;
+};
+
+static inline void enqueuePixel( GraphCutInfo *info, ImgPos pos )
+{
+    assert (info->queueSize_ < MAX_GC_QUEUE);
+    info->queueSize_++;
+    
+    info->mask_[ (info->img_->width_ * pos.y) + pos.x] |= CutFlag_VISITED;
+    
+    info->queue_[info->queueHead_++] = pos;
+    if (info->queueHead_==MAX_GC_QUEUE) info->queueHead_ = 0;
+}
+
+static inline ImgPos popPixel( GraphCutInfo *info )
+{
+    assert( info->queueSize_ > 0 );
+    info->queueSize_--;
+    
+    ImgPos p = info->queue_[info->queueTail_++];
+    if (info->queueTail_==MAX_GC_QUEUE) info->queueTail_ = 0;
+    return p;
+}
+
+void targetInit( void *info, int x, int y)
+{
+    GraphCutInfo *gcinfo = (GraphCutInfo*)info;
+    size_t ndx = (y*gcinfo->img_->width_) + x;
+    gcinfo->mask_[ndx] |= CutFlag_TARGET;
+    gcinfo->cutDbgImage_->drawPixel(x,y, 0xffff00ff );
+}
+
+void targetEval( void *info, int x, int y)
+{
+    GraphCutInfo *gcinfo = (GraphCutInfo*)info;
+    size_t ndx = (y*gcinfo->img_->width_) + x;
+    if (gcinfo->errorVal_[ndx] < gcinfo->endError_) {
+        gcinfo->endPos_ = ImgPosMake(x, y);
+        gcinfo->endError_ = gcinfo->errorVal_[ndx];
+    }
+}
+
+
+void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
+                  Image *img, Image *overImg, bool leftCorner )
+{
+    // initialize error and build mask
+    float *errorVal = (float*)malloc( img->height_*img->width_*sizeof(float));
+    uint8_t *mask = (uint8_t*)malloc(img->height_*img->width_*sizeof(uint8_t ));
+    
+    for (int j=0; j < img->height_; j++) {
+        for (int i=0; i < img->width_; i++) {
+
+            size_t ndx = (j*img->width_) + i;
+            errorVal[ndx] = 0;
+            mask[ndx] = 0;
+            
+            GLKVector3 p = GLKVector3Make( (float)i, (float)j, 0.0 );
+            GLKVector3 b = barycentric(ta, tb, tc, p );
+            
+            // use a much smaller overlap in this case, we want tight bounds on the mask
+            float ov = 0.001;
+            if ((b.x >=-ov) && (b.x <=1.0+ov) &&
+                (b.y >=-ov) && (b.y <=1.0+ov) &&
+                (b.z >=-ov) && (b.z <=1.0+ov) )
+            {
+                errorVal[ndx] = 0.0;
+            } else {
+                mask[ndx] |= CutFlag_MASKED;
+                errorVal[ndx] = FLT_MAX;
+            }
+        }
+    }
+    
+    // make the debug image
+    Image *cutDbgImage = new Image( img->width_, img->height_ );
+    for (int j=0; j < img->height_; j++) {
+        for (int i=0; i < img->width_; i++) {
+            size_t ndx = (j*img->width_) + i;
+            if (mask[ndx] & CutFlag_MASKED) {
+                cutDbgImage->drawPixel(i, j, 0xff0000ff );
+            } else {
+                cutDbgImage->drawPixel(i, j, 0xff000000 );
+            }
+        }
+    }
+    
+    // Cut the paths
+    int startX, startY;
+    GLKVector3 targA, targB;
+    if (leftCorner) {
+        startX = (int)tc.x;
+        startY = (int)tc.y;
+        targA = ta;
+        targB = tb;
+    } else {
+        startX = (int)tb.x;
+        startY = (int)tb.y;
+        targA = ta;
+        targB = tc;
+    }
+    
+    // Set up the target edge
+    GraphCutInfo gcinfo;
+    gcinfo.mask_ = mask;
+    gcinfo.errorVal_ = errorVal;
+    gcinfo.cutDbgImage_ = cutDbgImage;
+    gcinfo.img_ = img;
+    gcinfo.queue_ = (ImgPos *)malloc(sizeof(ImgPos) * MAX_GC_QUEUE );
+    gcinfo.queueSize_ = 0;
+    gcinfo.queueHead_ = 0;
+    gcinfo.queueTail_ = 0;
+    gcinfo.startPos_.x = startX;
+    gcinfo.startPos_.y = startY;
+    
+    foreach_line(targA.x, targA.y, targB.x, targB.y, &gcinfo, targetInit );
+    
+    enqueuePixel( &gcinfo, ImgPosMake( startX, startY ));
+    
+    // fill out error values
+    const float cfDist = 1.0;
+    while ((gcinfo.queueSize_ > 0) && (gcinfo.queueSize_ < 9999)) {
+        
+        ImgPos curr = popPixel( &gcinfo );
+//        printf("queue size: %u curr %d %d\n", gcinfo.queueSize_, curr.x, curr.y );
+        
+        size_t ndx = (curr.y * img->width_) + curr.x;
+        mask[ndx] |= CutFlag_MARKED;
+
+        float bestNearbyErr = FLT_MAX;
+        for (int j=-1; j <= 1; j++ ) {
+            for (int i=-1; i <= 1; i++) {
+                if ((i==0) && (j==0)) continue;
+
+                size_t ndx = ((curr.y+j) * img->width_) + (curr.x+i);
+//                printf("%d %d : %s\n", curr.y+j, curr.x + i,  (mask[ndx] & CutFlag_MARKED)?"MARKED":"no." );
+                if ((mask[ndx] & CutFlag_MARKED) && (errorVal[ndx]<bestNearbyErr)) {
+//                    printf("err: %f\n", errorVal[ndx] );
+                    bestNearbyErr = errorVal[ndx];
+                }
+            }
+        }
+        
+        // for the first pixel, no accumulated error
+        if (bestNearbyErr == FLT_MAX) {
+            bestNearbyErr  = 0.0;
+        }
+        
+//        printf("Best nearby: %f\n", bestNearbyErr );
+        
+        // call error/dist for this pixel
+        float d = sqrt( (float)((curr.x - startX)*(curr.x - startX) + (curr.y-startY)*(curr.y - startY)) );
+        d /= (float)img->width_; // not really normalized, we just need small values
+        float err = pixelError( img->getPixel(curr.x, curr.y), overImg->getPixel( curr.x, curr.y)) + cfDist*d;
+        err += bestNearbyErr;
+        
+        if (err > gcinfo.maxError_) {
+            gcinfo.maxError_ = err;
+        }
+        size_t endx = (curr.y * img->width_) + curr.x;
+        errorVal[endx] = err;
+
+        
+        // floodfill neighbors
+        for (int j=-1; j <= 1; j++ ) {
+            for (int i=-1; i <= 1; i++) {
+                if ((i==0) && (j==0)) continue;
+                
+                ImgPos p = ImgPosMake( curr.x + i, curr.y + j );
+                // shouldn't need this check because should be bounded by mask, but just in case...
+                if ((p.x < 0) || (p.y < 0) || (p.x >= img->width_) || (p.y >= img->height_)) continue;
+                
+                size_t ndx = (p.y * img->width_) + p.x;
+                if (!(mask[ndx] & (CutFlag_VISITED|CutFlag_MASKED)) ) {
+                    enqueuePixel( &gcinfo, p );
+                }
+            }
+        }
+    }
+    
+    for (int j=0; j < img->height_; j++) {
+        for (int i=0; i < img->width_; i++) {
+            size_t ndx = (j*img->width_) + i;
+            if (!(mask[ndx] & CutFlag_MASKED)) {
+                float ev =errorVal[ndx]/gcinfo.maxError_;
+                GLKVector4 c = GLKVector4Make( ev, ev, ev, 1.0 );
+                cutDbgImage->drawPixel( i, j, pixelColor( c ));
+            }
+        }
+    }
+    
+    // Find the best point on the end edge
+    gcinfo.endError_ = FLT_MAX;
+    foreach_line(targA.x, targA.y, targB.x, targB.y, &gcinfo, targetEval );
+    printf("End Pos %d %d\n", gcinfo.endPos_.x, gcinfo.endPos_.y );
+    
+    // backtrack line
+    ImgPos curr = gcinfo.endPos_;
+    float currErr = gcinfo.endError_;
+    int count = 1000;
+    while ((curr.x != startX) && (curr.y != startY)) {
+        cutDbgImage->drawPixel(curr.x, curr.y, 0xffffffff );
+        ImgPos next = curr;
+        float nextErr = currErr;
+        for (int j=-1; j <= 1; j++ ) {
+            for (int i=-1; i <= 1; i++) {
+                if ((i==0) && (j==0)) continue;
+                
+                size_t ndx = ((curr.y+j) * img->width_) + (curr.x+i);
+                if ((mask[ndx] & CutFlag_MARKED) && (errorVal[ndx] < nextErr)) {
+                    next = ImgPosMake( curr.x+i, curr.y+j );
+                    nextErr = errorVal[ndx];
+                }
+            }
+        }
+        curr = next;
+        currErr = nextErr;
+        if (!count--) {
+            printf("ERROR: too many steps...\n");
+            break;
+        }
+    }
+    
+    cutDbgImage->drawPixel( startX, startY, 0xff00ff00 );
+    cutDbgImage->drawPixel( gcinfo.endPos_.x, gcinfo.endPos_.y, 0xff00ff00 );
+    
+    cutDbgImage->saveAs("cut_debug.png");
+    
+    free(mask);
+    free(errorVal);
+    free(gcinfo.queue_);
+    
+    exit(1);
+}
+
+void combineTiles( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
+                  Image *img, Image *overImg, bool leftCorner, BlendMode blendMode )
+{
+    if (blendMode == BlendMode_BLEND) {
+        combineBlend(ta, tb, tc, img, overImg, leftCorner );
+    } else {
+        combineGraphCut(ta, tb, tc, img, overImg, leftCorner );
+    }
+}
+
+
+void Tile::paintFromSource(Image *srcImage, BlendMode blendMode)
 {
     // Paint first edge onto the tile
 //    int ndx = 0; // dbg crap
@@ -825,6 +1167,8 @@ void Tile::paintFromSource(Image *srcImage)
 //    if (edge_[1]->edgeCode_ == targ) ndx = 1;
 //    else if (edge_[2]->edgeCode_ == targ) ndx = 2;
     paintFromSourceEdge( img_, srcImage, 0 );
+    
+    img_->saveAs( "step1.png" );
     
     // Paint the next edge onto a temp image
     Image *tmpImg = new Image( img_->width_, img_->height_ );
@@ -834,15 +1178,19 @@ void Tile::paintFromSource(Image *srcImage)
     GLKVector3 tb = GLKVector3Make( tileB_[0], tileB_[1], 0.0 );
     GLKVector3 tc = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
 
-    combineBlend(ta, tb, tc, img_, tmpImg, true );
     
-
+    combineTiles(ta, tb, tc, img_, tmpImg, true, blendMode  );
+    img_->saveAs( "step2.png" );
+    
     // Paint the last edge onto a temp image
     paintFromSourceEdge( tmpImg, srcImage, 2 );
 
-    combineBlend(ta, tb, tc, img_, tmpImg, false );
+    combineTiles(ta, tb, tc, img_, tmpImg, false, blendMode );
+    img_->saveAs( "step3.png" );
     
     delete tmpImg;
+    
+    exit(1);
 }
 
 void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex )
@@ -940,7 +1288,7 @@ void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex 
                 
                 // TODO: (maybe) fractional lookup and interpolate
                 uint32_t sampleVal = srcImage->getPixel( (int32_t)samplePos.x, (int32_t)samplePos.y );
-#if 0
+#if 1
                 destImage->drawPixel(i, j, sampleVal );
 #else
                 destImage->drawPixelTinted(i, j, sampleVal, edge->debugColor_, 0.5 );
@@ -1227,7 +1575,7 @@ void TextureTiler::debugDumpTiles()
     for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
         Tile *tile = tiles_[tileNdx];
         
-        tile->paintFromSource( sourceImage_ );
+        tile->paintFromSource( sourceImage_, blendMode_ );
         tile->debugDrawAnnotations();
         
         tile->img_->save();
