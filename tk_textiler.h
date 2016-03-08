@@ -168,7 +168,7 @@ struct TextureTiler
     
     BlendMode blendMode_ = BlendMode_GRAPHCUT;
     uint32_t numEdgeColors_ = 5;
-    uint32_t outputSize_ = 1024;
+    uint32_t outputSize_ = 2048;
     uint32_t edgeSize_ = 95; // size of output triangle edges
     
     tapnik::Mesh *mesh_;

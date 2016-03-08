@@ -136,6 +136,9 @@ static inline float pixelError( uint32_t cA, uint32_t cB )
     
     // TODO: try Yuv or something to get more perceptual errors
     float err = fabs(a.x - b.x) + fabs(a.y - b.y) + fabs(a.z - b.z );
+    
+//    float err = fabs(GLKVector4Length( a ) - GLKVector4Length(b));
+    
     return err*err;
 }
 
@@ -239,7 +242,7 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-//    return;
+    return;
 //    printf("drawline %d %d -> %d %d\n", x1, y1, x2, y2 );
     
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
@@ -875,11 +878,17 @@ void combineBlend( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
     }
 }
 
+// ======================================================
+# pragma mark - Graphcut
+// ======================================================
+
 enum {
     CutFlag_MASKED  = 0x01,
     CutFlag_TARGET  = 0x02,
     CutFlag_VISITED = 0x04,
     CutFlag_MARKED  = 0x08,
+    CutFlag_FILLED  = 0x10,
+    CutFlag_EDGE  = 0x20,
 };
 
 
@@ -902,6 +911,7 @@ ImgPos ImgPosMake( int px, int py )
 struct GraphCutInfo {
     Image *cutDbgImage_;
     Image *img_;
+    Image *overImg_;
     ImgPos startPos_;
     float endError_;
     ImgPos endPos_;
@@ -926,6 +936,21 @@ static inline void enqueuePixel( GraphCutInfo *info, ImgPos pos )
     info->queue_[info->queueHead_++] = pos;
     if (info->queueHead_==MAX_GC_QUEUE) info->queueHead_ = 0;
 }
+
+static inline ImgPos popPixelFront( GraphCutInfo *info )
+{
+    assert( info->queueSize_ > 0 );
+    info->queueSize_--;
+    
+    ImgPos p = info->queue_[info->queueHead_];
+    if (info->queueHead_==0) {
+        info->queueHead_ = MAX_GC_QUEUE-1;
+    } else {
+        info->queueHead_--;
+    }
+    return p;
+}
+
 
 static inline ImgPos popPixel( GraphCutInfo *info )
 {
@@ -955,10 +980,145 @@ void targetEval( void *info, int x, int y)
     }
 }
 
+void fillInit( void *info, int x, int y)
+{
+    GraphCutInfo *gcinfo = (GraphCutInfo*)info;
+    size_t ndx = (y*gcinfo->img_->width_) + x;
+    
+    // don't fill from start pixels that are on the edge
+    if (!(gcinfo->mask_[ndx] & CutFlag_EDGE)) {
+        gcinfo->mask_[ndx] |= (CutFlag_EDGE|CutFlag_FILLED);
+        enqueuePixel( gcinfo, ImgPosMake(x, y) );
+    }
+}
+
+void cutPath( GraphCutInfo *gcinfo, ImgPos start, GLKVector3 targA, GLKVector3 targB )
+{
+    int width = gcinfo->img_->width_;
+    printf("-----------------------\n");
+    gcinfo->startPos_.x = start.x;
+    gcinfo->startPos_.y = start.y;
+    
+    foreach_line(targA.x, targA.y, targB.x, targB.y, gcinfo, targetInit );
+    
+    enqueuePixel( gcinfo, ImgPosMake( start.x, start.y ));
+    
+    // fill out error values
+    const float cfDist = 0.01;
+    while ((gcinfo->queueSize_ > 0) && (gcinfo->queueSize_ < 9999)) {
+        
+        ImgPos curr = popPixel( gcinfo );
+        //printf("queue size: %u curr %d %d\n", gcinfo.queueSize_, curr.x, curr.y );
+        
+        size_t ndx = (curr.y * gcinfo->img_->width_) + curr.x;
+        gcinfo->mask_[ndx] |= CutFlag_MARKED;
+        
+        float bestNearbyErr = FLT_MAX;
+        for (int j=-1; j <= 1; j++ ) {
+            for (int i=-1; i <= 1; i++) {
+                if ((i==0) && (j==0)) continue;
+                
+                size_t ndx = ((curr.y+j) * width) + (curr.x+i);
+                //                printf("%d %d : %s\n", curr.y+j, curr.x + i,  (mask[ndx] & CutFlag_MARKED)?"MARKED":"no." );
+                if ((gcinfo->mask_[ndx] & CutFlag_MARKED) && (gcinfo->errorVal_[ndx]<bestNearbyErr)) {
+                    //                    printf("err: %f\n", errorVal[ndx] );
+                    bestNearbyErr = gcinfo->errorVal_[ndx];
+                }
+            }
+        }
+        
+        // for the first pixel, no accumulated error
+        if (bestNearbyErr == FLT_MAX) {
+            bestNearbyErr  = 0.0;
+        }
+        
+        //        printf("Best nearby: %f\n", bestNearbyErr );
+        
+        // call error/dist for this pixel
+        float d = sqrt( (float)((curr.x - start.x)*(curr.x - start.x) + (curr.y-start.y)*(curr.y - start.y)) );
+        d /= (float)width; // not really normalized, we just need small values
+        float err = pixelError( gcinfo->img_->getPixel(curr.x, curr.y), gcinfo->overImg_->getPixel( curr.x, curr.y)) + cfDist*d;
+//        float err = pixelError( gcinfo->img_->getPixel(curr.x, curr.y), gcinfo->overImg_->getPixel( curr.x, curr.y));
+        err += bestNearbyErr;
+        
+        if (err > gcinfo->maxError_) {
+            gcinfo->maxError_ = err;
+        }
+        size_t endx = (curr.y * width) + curr.x;
+        gcinfo->errorVal_[endx] = err;
+        
+        
+        // floodfill neighbors
+        for (int j=-1; j <= 1; j++ ) {
+            for (int i=-1; i <= 1; i++) {
+                if ((i==0) && (j==0)) continue;
+                
+                ImgPos p = ImgPosMake( curr.x + i, curr.y + j );
+                // shouldn't need this check because should be bounded by mask, but just in case...
+                if ((p.x < 0) || (p.y < 0) || (p.x >= width) || (p.y >= gcinfo->img_->height_)) continue;
+                
+                size_t ndx = (p.y * width) + p.x;
+                if (!(gcinfo->mask_[ndx] & (CutFlag_VISITED|CutFlag_MASKED)) ) {
+                    enqueuePixel( gcinfo, p );
+                }
+            }
+        }
+    }
+    
+    for (int j=0; j < gcinfo->img_->height_; j++) {
+        for (int i=0; i < width; i++) {
+            size_t ndx = (j*width) + i;
+            if (!(gcinfo->mask_[ndx] & CutFlag_MASKED)) {
+                float ev =gcinfo->errorVal_[ndx]/gcinfo->maxError_;
+                GLKVector4 c = GLKVector4Make( ev, ev, ev, 1.0 );
+                gcinfo->cutDbgImage_->drawPixel( i, j, pixelColor( c ));
+            }
+        }
+    }
+    
+    // Find the best point on the end edge
+    gcinfo->endError_ = FLT_MAX;
+    foreach_line(targA.x, targA.y, targB.x, targB.y, gcinfo, targetEval );
+    printf("End Pos %d %d\n", gcinfo->endPos_.x, gcinfo->endPos_.y );
+    
+    // backtrack line
+    ImgPos curr = gcinfo->endPos_;
+    float currErr = gcinfo->endError_;
+    int count = 1000;
+    while ((curr.x != start.x) || (curr.y != start.y)) {
+        gcinfo->cutDbgImage_->drawPixel(curr.x, curr.y, 0xffffffff );
+        // "fill" the cut line to act as a boundry for the final mask
+        gcinfo->mask_[curr.y*width+curr.x] |= CutFlag_EDGE;
+       // printf("count %d backtrack %d %d endErr %f \n", count, curr.x, curr.y, gcinfo->endError_ );
+        ImgPos next = curr;
+        float nextErr = currErr;
+        for (int j=-1; j <= 1; j++ ) {
+            for (int i=-1; i <= 1; i++) {
+                if ((i==0) && (j==0)) continue;
+                
+                size_t ndx = ((curr.y+j) * width) + (curr.x+i);
+                if ((gcinfo->mask_[ndx] & CutFlag_MARKED) && (gcinfo->errorVal_[ndx] < nextErr)) {
+                    next = ImgPosMake( curr.x+i, curr.y+j );
+                    nextErr = gcinfo->errorVal_[ndx];
+                }
+            }
+        }
+        curr = next;
+        currErr = nextErr;
+        if (!count--) {
+            printf("ERROR: too many steps...\n");
+            break;
+        }
+    }
+    
+}
 
 void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
                   Image *img, Image *overImg, bool leftCorner )
 {
+//    // DBG
+//    leftCorner = !leftCorner;
+    
     // initialize error and build mask
     float *errorVal = (float*)malloc( img->height_*img->width_*sizeof(float));
     uint8_t *mask = (uint8_t*)malloc(img->height_*img->width_*sizeof(uint8_t ));
@@ -1000,152 +1160,154 @@ void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
         }
     }
     
-    // Cut the paths
-    int startX, startY;
-    GLKVector3 targA, targB;
-    if (leftCorner) {
-        startX = (int)tc.x;
-        startY = (int)tc.y;
-        targA = ta;
-        targB = tb;
-    } else {
-        startX = (int)tb.x;
-        startY = (int)tb.y;
-        targA = ta;
-        targB = tc;
-    }
-    
     // Set up the target edge
     GraphCutInfo gcinfo;
     gcinfo.mask_ = mask;
     gcinfo.errorVal_ = errorVal;
     gcinfo.cutDbgImage_ = cutDbgImage;
     gcinfo.img_ = img;
+    gcinfo.overImg_ = overImg;
     gcinfo.queue_ = (ImgPos *)malloc(sizeof(ImgPos) * MAX_GC_QUEUE );
     gcinfo.queueSize_ = 0;
     gcinfo.queueHead_ = 0;
     gcinfo.queueTail_ = 0;
-    gcinfo.startPos_.x = startX;
-    gcinfo.startPos_.y = startY;
-    
-    foreach_line(targA.x, targA.y, targB.x, targB.y, &gcinfo, targetInit );
-    
-    enqueuePixel( &gcinfo, ImgPosMake( startX, startY ));
-    
-    // fill out error values
-    const float cfDist = 1.0;
-    while ((gcinfo.queueSize_ > 0) && (gcinfo.queueSize_ < 9999)) {
+
+    // Cut the paths
+    ImgPos startPos;
+    ImgPos startPos2;
+    GLKVector3 targA1, targB1;
+    GLKVector3 targA2, targB2;
+    if (!leftCorner) {
+        startPos.x = (int)tc.x;
+        startPos.y = (int)tc.y;
+        startPos2.x = (int)ta.x;
+        startPos2.y = (int)ta.y;
+        targA1 = ta;
+        targB1 = tb;
+        targA2 = tc;
+        targB2 = tb;
+    } else {
+        startPos.x = (int)tc.x;
+        startPos.y = (int)tc.y;
+        startPos2.x = (int)tb.x;
+        startPos2.y = (int)tb.y;
+        targA1 = ta;
+        targB1 = tb;
+        targA2 = ta;
+        targB2 = tc;
         
+    }
+
+    // Cut the
+    cutPath( &gcinfo, startPos, targA1, targB1 );
+
+    cutDbgImage->drawPixel( startPos.x, startPos.y, 0xff00ff00 );
+    cutDbgImage->drawPixel( gcinfo.endPos_.x, gcinfo.endPos_.y, 0xff00ff00 );
+    
+//    cutDbgImage->saveAs("cut_debug.png");
+    
+    // reset the gcinfo
+    gcinfo.maxError_ = 0.0;
+    gcinfo.queueSize_ = 0;
+    gcinfo.queueHead_ = 0;
+    gcinfo.queueTail_ = 0;
+    
+    for (int j=0; j < img->height_; j++) {
+        for (int i=0; i < img->width_; i++) {
+            size_t ndx = j*img->width_+i;
+            // clear flags
+            mask[ndx] &= ~(CutFlag_TARGET|CutFlag_VISITED|CutFlag_MARKED);
+            errorVal[ndx] = FLT_MAX;;
+        }
+    }
+    
+    cutPath( &gcinfo, startPos2, targA2, targB2 );
+    
+    cutDbgImage->drawPixel( startPos2.x, startPos2.y, 0xff00ff00 );
+    cutDbgImage->drawPixel( gcinfo.endPos_.x, gcinfo.endPos_.y, 0xff00ff00 );
+    
+    //cutDbgImage->saveAs("cut_debug_zz.png");
+    
+    // Seed our line fill
+    gcinfo.queueSize_ = 0;
+    gcinfo.queueHead_ = 0;
+    gcinfo.queueTail_ = 0;
+
+    foreach_line( startPos.x, startPos.y, startPos2.x, startPos2.y,
+                 &gcinfo, fillInit );
+
+    // sort of hacky, but this is an easy way to exclude the start and end
+    // points so they don't leak
+    popPixel( &gcinfo ); // exclude end point
+    popPixelFront( &gcinfo ); // exclude start point
+    
+    // floodfill neighbors
+//    int count = 1500;
+    while (gcinfo.queueSize_ > 0) {
+        
+        if (gcinfo.queueSize_ >= 9999) {
+            printf("QUEUE FULL!\n" );
+            break;
+        }
+        // fill current
         ImgPos curr = popPixel( &gcinfo );
-//        printf("queue size: %u curr %d %d\n", gcinfo.queueSize_, curr.x, curr.y );
+//        size_t ndx = (curr.y*img->width_) + curr.x;
+//        gcinfo.mask_[ndx] |= CutFlag_FILLED;
         
-        size_t ndx = (curr.y * img->width_) + curr.x;
-        mask[ndx] |= CutFlag_MARKED;
-
-        float bestNearbyErr = FLT_MAX;
+        // enqueue reachable neigbors
         for (int j=-1; j <= 1; j++ ) {
             for (int i=-1; i <= 1; i++) {
+                
+                // fill non-diagonal neighbors, exactly one of i,j must be 0
                 if ((i==0) && (j==0)) continue;
-
-                size_t ndx = ((curr.y+j) * img->width_) + (curr.x+i);
-//                printf("%d %d : %s\n", curr.y+j, curr.x + i,  (mask[ndx] & CutFlag_MARKED)?"MARKED":"no." );
-                if ((mask[ndx] & CutFlag_MARKED) && (errorVal[ndx]<bestNearbyErr)) {
-//                    printf("err: %f\n", errorVal[ndx] );
-                    bestNearbyErr = errorVal[ndx];
-                }
-            }
-        }
-        
-        // for the first pixel, no accumulated error
-        if (bestNearbyErr == FLT_MAX) {
-            bestNearbyErr  = 0.0;
-        }
-        
-//        printf("Best nearby: %f\n", bestNearbyErr );
-        
-        // call error/dist for this pixel
-        float d = sqrt( (float)((curr.x - startX)*(curr.x - startX) + (curr.y-startY)*(curr.y - startY)) );
-        d /= (float)img->width_; // not really normalized, we just need small values
-        float err = pixelError( img->getPixel(curr.x, curr.y), overImg->getPixel( curr.x, curr.y)) + cfDist*d;
-        err += bestNearbyErr;
-        
-        if (err > gcinfo.maxError_) {
-            gcinfo.maxError_ = err;
-        }
-        size_t endx = (curr.y * img->width_) + curr.x;
-        errorVal[endx] = err;
-
-        
-        // floodfill neighbors
-        for (int j=-1; j <= 1; j++ ) {
-            for (int i=-1; i <= 1; i++) {
-                if ((i==0) && (j==0)) continue;
+                if ((i!=0) && (j!=0)) continue;
                 
                 ImgPos p = ImgPosMake( curr.x + i, curr.y + j );
                 // shouldn't need this check because should be bounded by mask, but just in case...
                 if ((p.x < 0) || (p.y < 0) || (p.x >= img->width_) || (p.y >= img->height_)) continue;
                 
                 size_t ndx = (p.y * img->width_) + p.x;
-                if (!(mask[ndx] & (CutFlag_VISITED|CutFlag_MASKED)) ) {
+                if (!(mask[ndx] & (CutFlag_FILLED|CutFlag_MASKED|CutFlag_EDGE)) ) {
+                    mask[ndx] |= CutFlag_FILLED;
                     enqueuePixel( &gcinfo, p );
                 }
             }
         }
+        
+//        if (count--==0){
+//            break;
+//        }
     }
-    
+    // draw filled pixels on debug mask
     for (int j=0; j < img->height_; j++) {
         for (int i=0; i < img->width_; i++) {
-            size_t ndx = (j*img->width_) + i;
-            if (!(mask[ndx] & CutFlag_MASKED)) {
-                float ev =errorVal[ndx]/gcinfo.maxError_;
-                GLKVector4 c = GLKVector4Make( ev, ev, ev, 1.0 );
-                cutDbgImage->drawPixel( i, j, pixelColor( c ));
+            size_t ndx = (j * img->width_) + i;
+            if ((mask[ndx] & CutFlag_EDGE) && (mask[ndx] & CutFlag_FILLED)) {
+                cutDbgImage->drawPixel(i, j, 0xffffffff );
+            } else if (mask[ndx] & CutFlag_EDGE) {
+                cutDbgImage->drawPixel(i, j, 0xffff7eff );
+            } else if (mask[ndx] & CutFlag_FILLED) {
+                cutDbgImage->drawPixel(i, j, 0xffff7e0a );
             }
         }
     }
+
+//    cutDbgImage->saveAs("cut_debug2.png");
     
-    // Find the best point on the end edge
-    gcinfo.endError_ = FLT_MAX;
-    foreach_line(targA.x, targA.y, targB.x, targB.y, &gcinfo, targetEval );
-    printf("End Pos %d %d\n", gcinfo.endPos_.x, gcinfo.endPos_.y );
-    
-    // backtrack line
-    ImgPos curr = gcinfo.endPos_;
-    float currErr = gcinfo.endError_;
-    int count = 1000;
-    while ((curr.x != startX) && (curr.y != startY)) {
-        cutDbgImage->drawPixel(curr.x, curr.y, 0xffffffff );
-        ImgPos next = curr;
-        float nextErr = currErr;
-        for (int j=-1; j <= 1; j++ ) {
-            for (int i=-1; i <= 1; i++) {
-                if ((i==0) && (j==0)) continue;
-                
-                size_t ndx = ((curr.y+j) * img->width_) + (curr.x+i);
-                if ((mask[ndx] & CutFlag_MARKED) && (errorVal[ndx] < nextErr)) {
-                    next = ImgPosMake( curr.x+i, curr.y+j );
-                    nextErr = errorVal[ndx];
-                }
-            }
-        }
-        curr = next;
-        currErr = nextErr;
-        if (!count--) {
-            printf("ERROR: too many steps...\n");
-            break;
+    // Finally, go through and blit over image where it overlaps
+    for (int j=0; j < img->height_; j++) {
+        for (int i=0; i < img->width_; i++) {
+            size_t ndx = (j * img->width_) + i;
+           if (mask[ndx] & (CutFlag_EDGE|CutFlag_FILLED)) {
+               img->drawPixel( i,j, overImg->getPixel(i,j));
+           }
         }
     }
-    
-    cutDbgImage->drawPixel( startX, startY, 0xff00ff00 );
-    cutDbgImage->drawPixel( gcinfo.endPos_.x, gcinfo.endPos_.y, 0xff00ff00 );
-    
-    cutDbgImage->saveAs("cut_debug.png");
-    
+
     free(mask);
     free(errorVal);
     free(gcinfo.queue_);
     
-    exit(1);
 }
 
 void combineTiles( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
@@ -1168,7 +1330,7 @@ void Tile::paintFromSource(Image *srcImage, BlendMode blendMode)
 //    else if (edge_[2]->edgeCode_ == targ) ndx = 2;
     paintFromSourceEdge( img_, srcImage, 0 );
     
-    img_->saveAs( "step1.png" );
+//    img_->saveAs( "step1.png" );
     
     // Paint the next edge onto a temp image
     Image *tmpImg = new Image( img_->width_, img_->height_ );
@@ -1180,17 +1342,17 @@ void Tile::paintFromSource(Image *srcImage, BlendMode blendMode)
 
     
     combineTiles(ta, tb, tc, img_, tmpImg, true, blendMode  );
-    img_->saveAs( "step2.png" );
+//    img_->saveAs( "step2.png" );
     
     // Paint the last edge onto a temp image
     paintFromSourceEdge( tmpImg, srcImage, 2 );
 
     combineTiles(ta, tb, tc, img_, tmpImg, false, blendMode );
-    img_->saveAs( "step3.png" );
+    //img_->saveAs( "step3.png" );
     
     delete tmpImg;
     
-    exit(1);
+//    exit(1);
 }
 
 void Tile::paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex )
