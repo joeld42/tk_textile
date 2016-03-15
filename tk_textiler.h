@@ -54,6 +54,8 @@ struct EdgeInfo
     
     // Where this edge lands on src image    
     GLKVector3 srcPointA_, srcPointB_;
+    GLKVector3 srcPointOppUp_, srcPointOppDown_;
+    bool placementFinalized_ = false;
 };
 
 enum BlendMode {
@@ -89,7 +91,7 @@ struct Tile
     
     char dbgIndexStr[200];
     
-    void paintFromSource( tapnik::Image *srcImage, BlendMode blendMode );
+    void paintFromSource( tapnik::Image *srcImage, BlendMode blendMode, uint32_t marginSize );
     void paintFromSourceEdge(Image *destImage, Image *srcImage, int edgeIndex );
     
     void debugDrawAnnotations();
@@ -155,7 +157,7 @@ struct TextureTiler
     void assembleTiles( int rowCount, int margin );
     void finish();
     
-    void debugDumpTiles();
+    void paintTiles();
     
     void placeEdge( EdgeInfo *edge );
     
@@ -167,6 +169,7 @@ struct TextureTiler
     tapnik::Image *outTexture_ = nullptr;
     
     BlendMode blendMode_ = BlendMode_GRAPHCUT;
+    uint32_t marginSize_ = 4;
     uint32_t numEdgeColors_ = 5;
     uint32_t outputSize_ = 2048;
     uint32_t edgeSize_ = 95; // size of output triangle edges

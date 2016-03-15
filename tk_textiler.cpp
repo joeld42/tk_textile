@@ -20,7 +20,6 @@
 
 // TODO list --------
 // - correspondence points in placeEdge
-// - graphcut between tiles
 // - handle open meshes
 // - make all things cmd line options
 // - 
@@ -235,14 +234,14 @@ inline uint32_t Image::getPixel( int32_t x, int32_t y )
     if ((x>=0) && (y>=0) && (x < width_) && (y < height_)) {
         return imgdata_[ (y * width_) + x ];
     } else {
-        return 0xffff00ff; // noticable out of bounds color
+        return 0xff7effff; // noticable out of bounds color
     }
 }
 
 // shamelessly stolen off the internet
 void Image::drawLine( int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color )
 {
-    return;
+//    return;
 //    printf("drawline %d %d -> %d %d\n", x1, y1, x2, y2 );
     
     int32_t dx=x2-x1;      /* the horizontal distance of the line */
@@ -474,22 +473,6 @@ void Mesh::save( const char *filename, int32_t outMapSize )
         }
         
         float stA[2], stB[2], stC[2];
-        
-        //        if ( tile->dbgIndex_ == 33 ) {
-        if (tri->dbgIndex_ == 95) {
-            //            printf("Suspicious tile on triangle %d\n", tri->dbgIndex_);
-            //            tileST[1] = tileST[0];
-            //            tileST[2] = tileST[0];
-            
-            // print out the bad tile
-            printf("-------\n");
-            printf("BAD STs: A %3.2f %3.2f B %3.2f %3.2f C %3.2f %3.2f\n",
-                   tileST[0].x, tileST[0].y,
-                   tileST[1].x, tileST[1].y,
-                   tileST[2].x, tileST[2].y );
-            dbgPrintTri( tri );
-        }
-
 
         stA[0] = (float)(tile->packX_ + tileST[0].x ) / (float)outMapSize;
         stA[1] = 1.0 - (float)(tile->packY_ + tileST[0].y ) / (float)outMapSize;
@@ -995,7 +978,6 @@ void fillInit( void *info, int x, int y)
 void cutPath( GraphCutInfo *gcinfo, ImgPos start, GLKVector3 targA, GLKVector3 targB )
 {
     int width = gcinfo->img_->width_;
-    printf("-----------------------\n");
     gcinfo->startPos_.x = start.x;
     gcinfo->startPos_.y = start.y;
     
@@ -1079,7 +1061,7 @@ void cutPath( GraphCutInfo *gcinfo, ImgPos start, GLKVector3 targA, GLKVector3 t
     // Find the best point on the end edge
     gcinfo->endError_ = FLT_MAX;
     foreach_line(targA.x, targA.y, targB.x, targB.y, gcinfo, targetEval );
-    printf("End Pos %d %d\n", gcinfo->endPos_.x, gcinfo->endPos_.y );
+//    printf("End Pos %d %d\n", gcinfo->endPos_.x, gcinfo->endPos_.y );
     
     // backtrack line
     ImgPos curr = gcinfo->endPos_;
@@ -1114,7 +1096,7 @@ void cutPath( GraphCutInfo *gcinfo, ImgPos start, GLKVector3 targA, GLKVector3 t
 }
 
 void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
-                  Image *img, Image *overImg, bool leftCorner )
+                  Image *img, Image *overImg, bool leftCorner, uint32_t marginSize )
 {
 //    // DBG
 //    leftCorner = !leftCorner;
@@ -1198,7 +1180,7 @@ void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
         
     }
 
-    // Cut the
+    // Cut the first path
     cutPath( &gcinfo, startPos, targA1, targB1 );
 
     cutDbgImage->drawPixel( startPos.x, startPos.y, 0xff00ff00 );
@@ -1236,8 +1218,7 @@ void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
     foreach_line( startPos.x, startPos.y, startPos2.x, startPos2.y,
                  &gcinfo, fillInit );
 
-    // sort of hacky, but this is an easy way to exclude the start and end
-    // points so they don't leak
+    // exclude the start and end points so they don't leak
     popPixel( &gcinfo ); // exclude end point
     popPixelFront( &gcinfo ); // exclude start point
     
@@ -1294,6 +1275,37 @@ void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
 
 //    cutDbgImage->saveAs("cut_debug2.png");
     
+    // Dilate the filled image into the mask for "margin" pixels
+    // to help overlaps
+    for (int k=0; k < marginSize; k++) {
+        for (int j=0; j < img->height_; j++) {
+            for (int i=0; i < img->width_; i++) {
+                size_t ndx = (j * img->width_) + i;
+                if (mask[ndx] & (CutFlag_MASKED)) {
+                    for (int jj=-1; jj <= 1; jj++ ) {
+                        for (int ii=-1; ii <= 1; ii++) {
+                            
+                            // fill non-diagonal neighbors, exactly one of i,j must be 0
+                            if ((i==0) && (j==0)) continue;
+                            if ((i!=0) && (j!=0)) continue;
+                            
+                            ImgPos p = ImgPosMake( i + ii, j + jj );
+                            if ((p.x < 0) || (p.y < 0) || (p.x >= img->width_) || (p.y >= img->height_)) continue;
+                            
+                            size_t ndx2 = p.y*img->width_+p.x;
+                            if (mask[ndx2]&(CutFlag_FILLED|CutFlag_EDGE)) {
+                                mask[ndx] |= CutFlag_FILLED;
+                                goto pixel_done;
+                            }
+                            
+                        }
+                    }
+                }
+            pixel_done:;
+            }
+        }
+    }
+    
     // Finally, go through and blit over image where it overlaps
     for (int j=0; j < img->height_; j++) {
         for (int i=0; i < img->width_; i++) {
@@ -1311,17 +1323,18 @@ void combineGraphCut( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
 }
 
 void combineTiles( GLKVector3 ta, GLKVector3 tb, GLKVector3 tc,
-                  Image *img, Image *overImg, bool leftCorner, BlendMode blendMode )
+                  Image *img, Image *overImg, bool leftCorner, BlendMode blendMode,
+                  uint32_t marginSize )
 {
     if (blendMode == BlendMode_BLEND) {
         combineBlend(ta, tb, tc, img, overImg, leftCorner );
     } else {
-        combineGraphCut(ta, tb, tc, img, overImg, leftCorner );
+        combineGraphCut(ta, tb, tc, img, overImg, leftCorner, marginSize );
     }
 }
 
 
-void Tile::paintFromSource(Image *srcImage, BlendMode blendMode)
+void Tile::paintFromSource(Image *srcImage, BlendMode blendMode, uint32_t marginSize )
 {
     // Paint first edge onto the tile
 //    int ndx = 0; // dbg crap
@@ -1341,13 +1354,13 @@ void Tile::paintFromSource(Image *srcImage, BlendMode blendMode)
     GLKVector3 tc = GLKVector3Make( tileC_[0], tileC_[1], 0.0 );
 
     
-    combineTiles(ta, tb, tc, img_, tmpImg, true, blendMode  );
+    combineTiles(ta, tb, tc, img_, tmpImg, true, blendMode, marginSize  );
 //    img_->saveAs( "step2.png" );
     
     // Paint the last edge onto a temp image
     paintFromSourceEdge( tmpImg, srcImage, 2 );
 
-    combineTiles(ta, tb, tc, img_, tmpImg, false, blendMode );
+    combineTiles(ta, tb, tc, img_, tmpImg, false, blendMode, marginSize );
     //img_->saveAs( "step3.png" );
     
     delete tmpImg;
@@ -1468,12 +1481,40 @@ TextureTiler::~TextureTiler()
     delete sourceImage_;
 }
 
+void dbgDrawEdge( Image *sourceImg, EdgeInfo *edge )
+{
+    // Center Edge
+    sourceImg->drawFatLine( edge->srcPointA_.x, edge->srcPointA_.y,
+                            edge->srcPointB_.x, edge->srcPointB_.y,
+                            edge->debugColor_ );
+    
+    // Top Triangle
+    sourceImg->drawLine( edge->srcPointA_.x, edge->srcPointA_.y,
+                        edge->srcPointOppUp_.x, edge->srcPointOppUp_.y,
+                        edge->debugColor_ );
+
+    sourceImg->drawLine( edge->srcPointB_.x, edge->srcPointB_.y,
+                        edge->srcPointOppUp_.x, edge->srcPointOppUp_.y,
+                        edge->debugColor_ );
+
+    // Bottom Triangle
+    sourceImg->drawLine( edge->srcPointA_.x, edge->srcPointA_.y,
+                        edge->srcPointOppDown_.x, edge->srcPointOppDown_.y,
+                        edge->debugColor_ );
+    
+    sourceImg->drawLine( edge->srcPointB_.x, edge->srcPointB_.y,
+                        edge->srcPointOppDown_.x, edge->srcPointOppDown_.y,
+                        edge->debugColor_ );
+
+}
+
 void TextureTiler::placeEdge( EdgeInfo *edge )
 {
     float edgeSz = (float)edgeSize_;
     float halfEdgeSz = edgeSz / 2.0;
     float randAngle = randUniform( 0.0, 360.0 ) * TK_DEG2RAD;
     
+    // FIXME: if source image is smaller than edgeSz, scale it down or something...
     GLKVector3 center = GLKVector3Make( randUniform( edgeSz, sourceImage_->width_ - edgeSz) ,
                                         randUniform( edgeSz, sourceImage_->height_ - edgeSz)  , 0.0 );
     
@@ -1481,6 +1522,14 @@ void TextureTiler::placeEdge( EdgeInfo *edge )
     
     edge->srcPointA_ = GLKVector3Add( center, v );
     edge->srcPointB_ = GLKVector3Subtract( center, v );
+    
+    GLKVector3 ab = GLKVector3Normalize( GLKVector3Subtract( edge->srcPointB_, edge->srcPointA_) );
+    
+    GLKVector3 vcross = GLKVector3Normalize( GLKVector3CrossProduct( ab, GLKVector3Make(0.0, 0.0, 1.0) ) );
+    GLKVector3 vperp = GLKVector3MultiplyScalar(vcross, edgeSz * TK_SQRT3_OVER_2 );
+    
+    edge->srcPointOppUp_ = GLKVector3Add( center, vperp );
+    edge->srcPointOppDown_ = GLKVector3Subtract( center, vperp );
     
     printf("Edge %d -- A %3.2f %3.2f %3.2f B %3.2f %3.2f %3.2f\n",
            edge->edgeCode_,
@@ -1588,19 +1637,44 @@ void TextureTiler::doStuff( const char *outTexFilename )
     
     // FIXME: delete images
 
-    
+#if 1
     // initial placement of edges in source
     for (int i=0; i < numEdgeColors_; i++) {
         placeEdge( edges[i] );
+
+        dbgDrawEdge( sourceImage_, edges[i] );
+//        sourceImage_->drawFatLine( edges[i]->srcPointA_.x, edges[i]->srcPointA_.y,
+//                                   edges[i]->srcPointB_.x, edges[i]->srcPointB_.y,
+//                                  edges[i]->debugColor_ );
+    }
+#else
+    
+    // Place edge 0 randomly
+    placeEdge( edges[0] );
+    edges[0]->placementFinalized_ = true;
+    
+    dbgDrawEdge( sourceImage_, edges[0] );
+    
+    for (int i=1; i < numEdgeColors_; i++)
+    {
         
-        sourceImage_->drawFatLine( edges[i]->srcPointA_.x, edges[i]->srcPointA_.y,
-                                   edges[i]->srcPointB_.x, edges[i]->srcPointB_.y,
-                                  edges[i]->debugColor_ );
+
+        // for the next edge, check it against any tiles it shares an edge with
+        // and find the error with some sample points
+        for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
+            
+        }
     }
     
+    // save the annotated source image
+    sourceImage_->filename_ = strdup( "dbg_source.png" );
+    sourceImage_->save();
+    exit(1);
+    
+#endif
     
     // paint tiles
-    debugDumpTiles();
+    paintTiles();
     
     assembleTiles( bestSize, 4 );
 
@@ -1630,7 +1704,8 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
                 tri->packRot_ = tileRot;
                 break;
             }
-
+// flip make "rorschach butterflies" which are distracting
+#if 0
             // Confusing: because packFlip reverses triangle direction, we want to match the same flip flags
             // to get the opposite
             if ( (tri->ca_ == tile->edge_[(tileRot+0)%3]) && (tri->flipped_[2] == !tile->flipped_[(tileRot+0)%3]) &&
@@ -1641,7 +1716,7 @@ Tile *TextureTiler::findOrCreateTile( Triangle *tri )
                 tri->packRot_ = tileRot;
                 break;
             }
-
+#endif
         }
     }
     
@@ -1732,14 +1807,14 @@ void TextureTiler::assembleTiles( int rowCount, int margin )
     }
 }
 
-void TextureTiler::debugDumpTiles()
+void TextureTiler::paintTiles()
 {
     for (size_t tileNdx = 0; tileNdx < numTiles_; tileNdx++) {
         Tile *tile = tiles_[tileNdx];
         
-        tile->paintFromSource( sourceImage_, blendMode_ );
+        tile->paintFromSource( sourceImage_, blendMode_, marginSize_ );
         tile->debugDrawAnnotations();
-        
+        printf("Saving tile %lu/%zu\n", tileNdx+1, numTiles_ );
         tile->img_->save();
     }
     
